@@ -24,6 +24,15 @@ describe('resolveSkillCategory', () => {
     expect(resolveSkillCategory(categories)?.code).toBe('topcat');
   });
 
+  it('prefers a category coded `skill` (the field lern-service reads) even when it lacks the highest index', () => {
+    const categories = [
+      { identifier: 'c_industry', name: 'Industry', code: 'industry' },
+      { identifier: 'c_skill', name: 'Skill', code: 'skill' },
+      { identifier: 'c_other', name: 'Other', code: 'other', index: 9 },
+    ];
+    expect(resolveSkillCategory(categories)?.code).toBe('skill');
+  });
+
   it('defaults a missing terms array to empty', () => {
     expect(resolveSkillCategory([{ identifier: 'c1', name: 'Only', code: 'only', index: 0 }]))
       .toEqual({ code: 'only', terms: [] });

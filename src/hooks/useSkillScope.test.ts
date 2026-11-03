@@ -31,14 +31,23 @@ const rootWithoutPrior = (): INode => ({
 });
 
 describe('resolveSkillScope', () => {
-  it("uses the prior assessment's skill tags as the sole scope when one is linked", () => {
+  it("uses the prior assessment's skill tags as the sole scope when one is linked, as term codes", () => {
     expect(resolveSkillScope(rootWithPrior(['Python programming', 'Java']), skillCategory, {}))
-      .toEqual({ scope: ['Python programming', 'Java'], source: 'prior' });
+      .toEqual({ scope: ['python', 'java'], source: 'prior' });
+  });
+
+  it('accepts prior tags stored as codes, legacy names (case-insensitive) or a mix, de-duplicated', () => {
+    expect(resolveSkillScope(rootWithPrior(['python', 'PYTHON PROGRAMMING', 'sql']), skillCategory, {}))
+      .toEqual({ scope: ['python', 'sql'], source: 'prior' });
+  });
+
+  it('keeps a prior tag that matches no term as-is rather than dropping it', () => {
+    expect(resolveSkillScope(rootWithPrior(['Unknown skill']), skillCategory, {}).scope).toEqual(['Unknown skill']);
   });
 
   it('falls back to the full skill catalog when no prior assessment is linked', () => {
     expect(resolveSkillScope(rootWithoutPrior(), skillCategory, {}))
-      .toEqual({ scope: ['Python programming', 'Java', 'SQL'], source: 'manual' });
+      .toEqual({ scope: ['python', 'java', 'sql'], source: 'manual' });
   });
 
   it('falls back to manual when there is no root node yet', () => {
@@ -54,7 +63,7 @@ describe('resolveSkillScope', () => {
     const root = rootWithPrior(['Python programming']);
     const priorCourseId = root.children![0].children![0].id;
     const cache = { [priorCourseId]: { skill: ['Java', 'SQL'] } };
-    expect(resolveSkillScope(root, skillCategory, cache)).toEqual({ scope: ['Java', 'SQL'], source: 'prior' });
+    expect(resolveSkillScope(root, skillCategory, cache)).toEqual({ scope: ['java', 'sql'], source: 'prior' });
   });
 
   it('never derives scope from a regular (non-assessment) Level at index 0', () => {

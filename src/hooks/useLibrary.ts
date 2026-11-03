@@ -6,6 +6,7 @@ import { useUiStore } from '../store/ui.store';
 import { useSkillCategory } from './useSkillCategory';
 import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum, isAssessmentLevel } from '../utils/lpStructure';
 import { compositeSearch, DEFAULT_SEARCH_FIELDS } from '../api/content';
+import { skillFilterValues } from '../utils/skillTerms';
 import { LIBRARY_PRIMARY_CATEGORIES } from '../types/content';
 import type { LibraryFilters } from '../components/LibraryDock/LibraryFilterPanel';
 
@@ -202,8 +203,11 @@ export function useLibrary() {
         }
         let filters: Record<string, unknown>;
         if (editorProfile.competencyScoped) {
+          // Level skills are saved as codes, but courses may still be tagged
+          // with legacy names — match either.
           const lpFilters = buildLpLibraryFilters(
-            activeAssessmentSlot, isPickingEvaluationCourse, selectedLevelSkills, skillCategory?.code, lpFrameworkId,
+            activeAssessmentSlot, isPickingEvaluationCourse,
+            skillFilterValues(selectedLevelSkills, skillCategory?.terms), skillCategory?.code, lpFrameworkId,
           );
           filters = { status: ['Live'], ...lpFilters };
         } else {

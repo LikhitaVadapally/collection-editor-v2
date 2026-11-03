@@ -4,8 +4,11 @@ import { useLabels } from '../../hooks/useLabels';
 import styles from './UnitContentList.module.scss';
 
 interface SkillPickerProps {
+  /** Skill term codes — what gets saved. */
   options: string[];
   selected: string[];
+  /** Code → display name (the framework term's name). */
+  labelOf: (skill: string) => string;
   /** Selected skills that fell outside the scope after the prior assessment changed —
    *  flagged for re-selection rather than silently dropped. */
   outOfScope: string[];
@@ -25,7 +28,7 @@ interface SkillPickerProps {
 // box opens a checkbox dropdown of the remaining options, so the picker
 // stays compact regardless of how many skills the catalog/scope has.
 export const SkillPicker: React.FC<SkillPickerProps> = ({
-  options, selected, outOfScope, uncovered, onChange, isEditable, description,
+  options, selected, labelOf, outOfScope, uncovered, onChange, isEditable, description,
 }) => {
   const lbl = useLabels();
   const [query, setQuery] = useState('');
@@ -42,7 +45,7 @@ export const SkillPicker: React.FC<SkillPickerProps> = ({
   }, [dropdownOpen]);
 
   const filtered = query
-    ? options.filter(o => o.toLowerCase().includes(query.toLowerCase()))
+    ? options.filter(o => labelOf(o).toLowerCase().includes(query.toLowerCase()))
     : options;
 
   const toggle = (skill: string) => {
@@ -65,13 +68,13 @@ export const SkillPicker: React.FC<SkillPickerProps> = ({
 
       {outOfScope.length > 0 && (
         <div className={styles.skillWarning} role="alert">
-          {lbl.learningPath.skillsOutOfScopeWarning.replace('{skills}', outOfScope.join(', '))}
+          {lbl.learningPath.skillsOutOfScopeWarning.replace('{skills}', outOfScope.map(labelOf).join(', '))}
         </div>
       )}
 
       {uncovered.length > 0 && (
         <div className={styles.skillWarning} role="alert">
-          {lbl.learningPath.skillsUncoveredWarning.replace('{skills}', uncovered.join(', '))}
+          {lbl.learningPath.skillsUncoveredWarning.replace('{skills}', uncovered.map(labelOf).join(', '))}
         </div>
       )}
 
@@ -90,13 +93,13 @@ export const SkillPicker: React.FC<SkillPickerProps> = ({
                 ].filter(Boolean).join(' ')}
                 title={isUncovered ? lbl.learningPath.skillUncoveredPillTitle : undefined}
               >
-                {skill}
+                {labelOf(skill)}
                 {isEditable && (
                   <button
                     type="button"
                     className={styles.skillPillRemove}
                     onClick={() => remove(skill)}
-                    aria-label={lbl.learningPath.removeSkillAriaLabel.replace('{skill}', skill)}
+                    aria-label={lbl.learningPath.removeSkillAriaLabel.replace('{skill}', labelOf(skill))}
                   >
                     <X size={11} />
                   </button>
@@ -143,7 +146,7 @@ export const SkillPicker: React.FC<SkillPickerProps> = ({
                       <span className={[styles.skillCheckbox, isSelected ? styles.skillCheckboxChecked : ''].join(' ')}>
                         {isSelected && <Check size={12} />}
                       </span>
-                      {skill}
+                      {labelOf(skill)}
                     </button>
                   );
                 })

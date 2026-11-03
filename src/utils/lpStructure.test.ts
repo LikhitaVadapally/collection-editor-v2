@@ -797,3 +797,69 @@ describe('revalidateAssessmentSlots', () => {
     expect(readContent).not.toHaveBeenCalled();
   });
 });
+
+describe('skill values stored as term codes or legacy names', () => {
+  const terms = [
+    { identifier: 't1', name: 'Python programming', code: 'python' },
+    { identifier: 't2', name: 'Java', code: 'java' },
+    { identifier: 't3', name: 'SQL', code: 'sql' },
+  ];
+
+  it('computeSkillsCovered normalises names and codes to one set of codes', () => {
+    const root = level({
+      id: 'root',
+      children: [
+        level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['Python programming'])] }),
+        level({ id: 'lvl1', metadata: { skill: ['python', 'java'] }, children: [course('c1')] }),
+        level({ id: 'lvl2', metadata: { skill: ['JAVA'] }, children: [course('c2')] }),
+      ],
+    });
+    expect(computeSkillsCovered(root, 'skill', terms).sort()).toEqual(['java', 'python']);
+  });
+
+  it('resolveSkillsCoveredForSync rewrites a root still holding legacy names as codes, then settles', () => {
+    const root = level({
+      id: 'root', metadata: { skill: ['Java'] },
+      children: [level({ id: 'lvl1', metadata: { skill: ['Java'] }, children: [course('c1')] })],
+    });
+    expect(resolveSkillsCoveredForSync(root, 'skill', {}, terms)).toEqual(['java']);
+    expect(resolveSkillsCoveredForSync(root, 'skill', { root: { skill: ['java'] } }, terms)).toBeNull();
+  });
+
+  it('computeUncoveredSkills treats a code-selected skill as covered by a course tagged with its name', () => {
+    const lvl = level({
+      id: 'lvl1',
+      children: [course('c1', { metadata: { skill: ['Python programming'] } }), course('c2', { metadata: { skill: ['sql'] } })],
+    });
+    expect(computeUncoveredSkills(lvl, ['python', 'SQL', 'java'], 'skill', terms)).toEqual(['java']);
+  });
+
+  it('findLevelsWithOutOfScopeSkills compares legacy-name Level selections against a code scope', () => {
+    const root = level({
+      id: 'root',
+      children: [
+        level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['python'])] }),
+        level({ id: 'in', metadata: { skill: ['Python programming'] }, children: [course('c1')] }),
+        level({ id: 'out', metadata: { skill: ['Java'] }, children: [course('c2')] }),
+      ],
+    });
+    expect(findLevelsWithOutOfScopeSkills(root, 'skill', ['python'], terms).map(l => l.id)).toEqual(['out']);
+  });
+
+  it('validateLearningPathStructure accepts mixed name/code tags and names skills by their term name in messages', () => {
+    const root = level({
+      id: 'root', metadata: { policy: 'strict' },
+      children: [
+        level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['Python programming'])] }),
+        level({
+          id: 'lvl1', name: 'Level 1', metadata: { skill: ['python', 'java'] },
+          children: [course('c1', { metadata: { skill: ['Python programming'] } })],
+        }),
+      ],
+    });
+    const issues = validateLearningPathStructure(root, 'skill', ['python'], {}, terms);
+    expect(issues.find(i => i.code === 'levelSkillsOutOfScope')?.message).toContain(': Java.');
+    expect(issues.find(i => i.code === 'levelSkillsUncovered')?.message).toContain(': Java.');
+    expect(issues.some(i => i.code === 'courseMissingSkillTag')).toBe(false);
+  });
+});

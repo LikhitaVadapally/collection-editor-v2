@@ -7,6 +7,7 @@ import { useIsDraftStatus, useSelectedNodeIsUnit } from '../../hooks/useContentS
 import { useLabels } from '../../hooks/useLabels';
 import { useEditorStore } from '../../store/editor.store';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
+import { skillLabel } from '../../utils/skillTerms';
 import styles from './LibraryCard.module.scss';
 
 const CT_ICONS: Record<string, React.ElementType> = {
@@ -42,7 +43,9 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
   const skillTags = competencyScoped && skillCategory
     ? (() => {
         const raw = (item as unknown as Record<string, unknown>)[skillCategory.code];
-        return Array.isArray(raw) ? raw as string[] : raw ? [String(raw)] : [];
+        const values = Array.isArray(raw) ? raw as string[] : raw ? [String(raw)] : [];
+        // Stored as term codes (or legacy names) — show the term name.
+        return Array.from(new Set(values.map(v => skillLabel(String(v), skillCategory.terms))));
       })()
     : [];
 

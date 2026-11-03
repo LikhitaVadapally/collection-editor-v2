@@ -1,6 +1,7 @@
 import type { IFrameworkDetails, ITerm } from '../../../types/framework';
 import type { IEditorProfile } from '../../../types/profile';
 import { resolveSkillCategory } from '../../../hooks/useSkillCategory';
+import { toSkillCodes } from '../../../utils/skillTerms';
 
 // Design labels for the LP root's consumption-policy field — the raw values
 // match the Viewer Service's tracking_policies enum (strict | adaptive |
@@ -39,6 +40,8 @@ export interface PreparedField {
   sourceCategory?: string;
   defaultValue?: unknown;
   currentValue?: unknown;
+  /** The framework's skill category field — values are term codes. */
+  isSkillField?: boolean;
 }
 
 export const SECTION_DISPLAY: Record<string, { title: string; description?: string }> = {
@@ -143,6 +146,22 @@ const FIELD_TO_FW_CATEGORY: Record<string, string> = {
 // Fields whose values are stored/validated as term identifiers (not names).
 const TARGET_FW_FIELDS = new Set(['targetBoardIds', 'targetMediumIds', 'targetGradeLevelIds', 'targetSubjectIds']);
 
+// Classic curriculum categories are never the skill category, even when one
+// of them is a K-12 framework's highest-index category (NCF's topic).
+const NON_SKILL_CATEGORY_CODES = new Set(Object.values(FIELD_TO_FW_CATEGORY));
+
+/**
+ * The org framework's skill category code, when it has one. A field with
+ * this code is the content's skill tagging (lern-service credits these on
+ * course completion): always a multiselect bound to the category's terms,
+ * saved as term CODES — names are ambiguous when two terms share one. Legacy
+ * name values are normalised to codes so they still show as selected.
+ */
+function resolveFormSkillCategory(fw: IFrameworkDetails): { code: string; terms: ITerm[] } | undefined {
+  const skill = resolveSkillCategory(fw.organisationFramework?.categories);
+  return skill && !NON_SKILL_CATEGORY_CODES.has(skill.code) ? skill : undefined;
+}
+
 // ----- Public hook -----------------------------------------------------------
 export function useFieldPrepare(
   formConfig: Array<Record<string, unknown>>,
@@ -166,6 +185,8 @@ export function useFieldPrepare(
     if (c && !fieldsByCode.has(c)) fieldsByCode.set(c, f);
   }
 
+  const skillCategory = resolveFormSkillCategory(frameworkDetails);
+
   const seenCodes = new Set<string>();
   const prepared = formConfig.filter((field) => {
     // QR/Dial Code is managed via header buttons, not the root form
@@ -183,12 +204,15 @@ export function useFieldPrepare(
     return true;
   }).map((field): PreparedField => {
     const code = (field.code as string) ?? '';
-    const inputType = resolveInputType(field);
-    const options = resolveOptions(field, frameworkDetails, nodeMetadata, fieldsByCode, ctx);
+    const isSkillField = !!skillCategory && code === skillCategory.code;
+    const inputType = isSkillField ? 'multiselect' : resolveInputType(field);
+    const options = isSkillField
+      ? resolveFwOptions(code, skillCategory.code, field, frameworkDetails, nodeMetadata, fieldsByCode, true)
+      : resolveOptions(field, frameworkDetails, nodeMetadata, fieldsByCode, ctx);
     const rawValue = nodeMetadata[code];
-    const currentValue = applyFieldDefault(
-      code, normalizeCurrentValue(rawValue, inputType), inputType, nodeMetadata, ctx,
-    );
+    const currentValue = isSkillField
+      ? toSkillCodes(rawValue, skillCategory.terms)
+      : applyFieldDefault(code, normalizeCurrentValue(rawValue, inputType), inputType, nodeMetadata, ctx);
     const base: PreparedField = {
       code,
       label: (field.label as string) ?? code,
@@ -208,9 +232,10 @@ export function useFieldPrepare(
       depends: field.depends as string[] | undefined,
       tab: resolveTab(field),
       section: field.section as string | undefined,
-      sourceCategory: field.sourceCategory as string | undefined,
+      sourceCategory: (field.sourceCategory as string | undefined) ?? (isSkillField ? code : undefined),
       defaultValue: field.defaultValue ?? field.default,
       currentValue,
+      ...(isSkillField ? { isSkillField } : {}),
     };
 
     // dialcodes is only visible and required when dialcodeRequired === 'Yes'.
@@ -540,10 +565,13 @@ function resolveFwOptions(
   fw: IFrameworkDetails,
   nodeMetadata: Record<string, unknown>,
   fieldsByCode: Map<string, Record<string, unknown>>,
+  useCode = false,
 ): Array<{ label: string; value: string }> | undefined {
   const useIdentifier = usesIdentifier(code, field);
   const preferTarget = prefersTargetFramework(code, field);
-  const fromTerm = (t: ITerm) => ({ label: t.name, value: useIdentifier ? t.identifier : t.name });
+  const fromTerm = (t: ITerm) => ({
+    label: t.name, value: useCode ? t.code : useIdentifier ? t.identifier : t.name,
+  });
 
   const depends = field.depends as string[] | undefined;
 
@@ -649,14 +677,18 @@ function adaptFrameworkFields(
   });
 
   const existingCodes = new Set(kept.map(f => f.code));
+  const skillCode = resolveFormSkillCategory(fw)?.code;
   const dynamic: PreparedField[] = [];
   for (const cat of fw.organisationFramework?.categories ?? []) {
     if (existingCodes.has(cat.code)) continue;
+    // Skill category: saved as term codes (see resolveFormSkillCategory).
+    const isSkill = cat.code === skillCode;
     dynamic.push({
       code: cat.code, label: cat.name, inputType: 'multiselect',
       editable: true, tab: 'details', section: 'Organisation Framework Terms',
-      options: (cat.terms ?? []).map(t => ({ label: t.name, value: t.name })),
-      currentValue: cv(meta, cat.code, 'multiselect'),
+      ...(isSkill ? { isSkillField: true } : {}),
+      options: (cat.terms ?? []).map(t => ({ label: t.name, value: isSkill ? t.code : t.name })),
+      currentValue: isSkill ? toSkillCodes(meta[cat.code], cat.terms) : cv(meta, cat.code, 'multiselect'),
     });
   }
   if (!dynamic.length) return kept;

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTreeStore } from '../store/tree.store';
 import { isAssessmentLevel } from '../utils/lpStructure';
 import { useSkillCategory, type ISkillCategory } from './useSkillCategory';
+import { toSkillCodes } from '../utils/skillTerms';
 import type { INode } from '../types/editor';
 
 export interface ISkillScope {
@@ -20,7 +21,9 @@ export function resolveSkillScope(
   skillCategory: ISkillCategory | null,
   treeCache: Record<string, Record<string, unknown>>,
 ): ISkillScope {
-  const manual: ISkillScope = { scope: (skillCategory?.terms ?? []).map((t) => t.name), source: 'manual' };
+  // Scope is expressed as term codes; a prior course's tags may be legacy
+  // names, so they're normalised before any comparison against it.
+  const manual: ISkillScope = { scope: (skillCategory?.terms ?? []).map((t) => t.code), source: 'manual' };
   if (!skillCategory) return manual;
 
   const preLevel = rootNode?.children?.[0];
@@ -30,8 +33,7 @@ export function resolveSkillScope(
   if (!priorCourse) return manual;
   const cached = treeCache[priorCourse.id]?.[skillCategory.code] as string[] | undefined;
   const raw = (cached ?? priorCourse.metadata?.[skillCategory.code]) as string[] | string | undefined;
-  const scope = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  return { scope, source: 'prior' };
+  return { scope: toSkillCodes(raw, skillCategory.terms), source: 'prior' };
 }
 
 export function useSkillScope(): ISkillScope {

@@ -24,12 +24,15 @@ export function useSkillsCoveredSync(): void {
   // would otherwise refire this effect on every SplitBuilderShell render
   // instead of only when the resolved category actually changes.
   const skillCategoryCode = skillCategory?.code;
+  // Terms (framework data, stable across renders) normalise legacy name tags
+  // to codes, so the root mirror is written as codes.
+  const skillTerms = skillCategory?.terms;
 
   useEffect(() => {
     if (!isLearningPath || !skillCategoryCode) return;
     const root = treeData[0];
-    const toSync = resolveSkillsCoveredForSync(root, skillCategoryCode, treeCache);
+    const toSync = resolveSkillsCoveredForSync(root, skillCategoryCode, treeCache, skillTerms);
     if (toSync === null) return;
     updateNode(root!.id, { [skillCategoryCode]: toSync }, [skillCategoryCode]);
-  }, [isLearningPath, treeData, treeCache, skillCategoryCode, updateNode]);
+  }, [isLearningPath, treeData, treeCache, skillCategoryCode, skillTerms, updateNode]);
 }

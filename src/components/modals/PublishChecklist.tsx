@@ -21,7 +21,7 @@ const LearningPathChecklist: React.FC<{ objectType: string; onConfirm: () => voi
   const { scope } = useSkillScope();
   const [asyncIssues, setAsyncIssues] = useState<LpValidationIssue[] | null>(null);
 
-  const structuralIssues = validateLearningPathStructure(root, skillCategory?.code, scope, treeCache);
+  const structuralIssues = validateLearningPathStructure(root, skillCategory?.code, scope, treeCache, skillCategory?.terms);
 
   useEffect(() => {
     let cancelled = false;

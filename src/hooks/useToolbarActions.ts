@@ -95,7 +95,7 @@ export function useToolbarActions(save: () => Promise<void>) {
    */
   const checkLpStructure = useCallback((): boolean => {
     if (editorProfile.key !== 'learningPath') return true;
-    const issues = validateLearningPathStructure(treeData[0], skillCategory?.code, skillScope, treeCache);
+    const issues = validateLearningPathStructure(treeData[0], skillCategory?.code, skillScope, treeCache, skillCategory?.terms);
     if (issues.length === 0) return true;
     toast.error(issues[0].message);
     return false;

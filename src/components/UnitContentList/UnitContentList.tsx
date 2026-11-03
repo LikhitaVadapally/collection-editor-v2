@@ -11,6 +11,7 @@ import { useLabels } from '../../hooks/useLabels';
 import { useSkillScope } from '../../hooks/useSkillScope';
 import { computeSkillsCovered, computeUncoveredSkills, isAssessmentLevel } from '../../utils/lpStructure';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
+import { skillLabel, toSkillCodes } from '../../utils/skillTerms';
 import { ContentRow } from './ContentRow';
 import { SkillPicker } from './SkillPicker';
 import { AssessmentSlotItem } from './AssessmentSlotItem';
@@ -51,16 +52,18 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
   // Selected skills live under the resolved skill-category code (e.g. 'skill'
   // for USF) — the SAME field a linked course's own tags use — never the
   // reserved Sunbird `competencies` field, whose platform schema expects
-  // competency-ontology objects, not plain framework-term strings.
-  const selectedSkills = skillCategory && Array.isArray(activeNodeMeta[skillCategory.code])
-    ? activeNodeMeta[skillCategory.code] as string[]
-    : [];
+  // competency-ontology objects, not plain framework-term strings. Values
+  // are term codes; legacy name tags are normalised here so they still show
+  // as selected, and the next change re-saves the whole selection as codes.
+  const skillTerms = skillCategory?.terms;
+  const selectedSkills = skillCategory ? toSkillCodes(activeNodeMeta[skillCategory.code], skillTerms) : [];
+  const labelOf = useCallback((s: string) => skillLabel(s, skillTerms), [skillTerms]);
   const outOfScopeSkills = source === 'prior' ? selectedSkills.filter(s => !scope.includes(s)) : [];
-  const skillsCovered = isLpRoot ? computeSkillsCovered(treeData[0], skillCategory?.code) : [];
+  const skillsCovered = isLpRoot ? computeSkillsCovered(treeData[0], skillCategory?.code, skillTerms) : [];
   // Selected but no linked course under THIS Level actually carries the tag —
   // independent of (and can overlap with) out-of-scope: a skill can be both.
   const uncoveredSkills = isLpLevel
-    ? computeUncoveredSkills(selectedNode, selectedSkills, skillCategory?.code)
+    ? computeUncoveredSkills(selectedNode, selectedSkills, skillCategory?.code, skillTerms)
     : [];
 
   const handleSkillsChange = useCallback((skills: string[]) => {
@@ -126,7 +129,7 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
             <span className={styles.emptyHint}>{lbl.learningPath.skillsCoveredDescription}</span>
             {skillsCovered.length > 0 && (
               <div className={styles.chips}>
-                {skillsCovered.map(s => <span key={s} className={styles.chip}>{s}</span>)}
+                {skillsCovered.map(s => <span key={s} className={styles.chip}>{labelOf(s)}</span>)}
               </div>
             )}
             {skillsCovered.length === 0 && (
@@ -149,6 +152,7 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
         <SkillPicker
           options={scope}
           selected={selectedSkills}
+          labelOf={labelOf}
           outOfScope={outOfScopeSkills}
           uncovered={uncoveredSkills}
           onChange={handleSkillsChange}

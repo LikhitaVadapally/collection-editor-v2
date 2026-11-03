@@ -16,6 +16,7 @@ import { readCourseHierarchy, mapToINode } from '../../api/hierarchy';
 import { getCtStyle } from '../../hooks/useContentType';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useLabels } from '../../hooks/useLabels';
+import { skillLabel } from '../../utils/skillTerms';
 import type { INode } from '../../types/editor';
 import styles from './CourseDetailsPanel.module.scss';
 
@@ -90,7 +91,8 @@ export const CourseDetailsPanel: React.FC<CourseDetailsPanelProps> = ({ courseId
 
   const skillsFor = (content: INode): string[] => {
     if (!skillCategory) return [];
-    return toStringList(content.metadata?.[skillCategory.code]);
+    // Tags may be term codes or legacy names — always display the name.
+    return toStringList(content.metadata?.[skillCategory.code]).map((s) => skillLabel(s, skillCategory.terms));
   };
 
   const contentCountLabel = (count: number) =>

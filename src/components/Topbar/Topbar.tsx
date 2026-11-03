@@ -151,7 +151,7 @@ const ConfirmReviewModal: React.FC<ConfirmReviewModalProps> = ({ onConfirm, onCa
   const skillCategory = useSkillCategory();
   const { scope } = useSkillScope();
   const lpIssues = isLearningPath
-    ? validateLearningPathStructure(root, skillCategory?.code, scope, treeCache)
+    ? validateLearningPathStructure(root, skillCategory?.code, scope, treeCache, skillCategory?.terms)
     : [];
   const hasBlockingIssues = lpIssues.length > 0;
 

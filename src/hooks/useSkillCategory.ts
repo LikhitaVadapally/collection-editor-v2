@@ -12,6 +12,9 @@ export interface ISkillCategory {
   terms: ITerm[];
 }
 
+// Shared so `terms` is referentially stable for effect deps.
+const EMPTY_TERMS: ITerm[] = [];
+
 /**
  * Skills are not a fixed field: resolve the active framework's
  * skill-equivalent category. USF exposes it directly as the `skill`
@@ -19,13 +22,17 @@ export interface ISkillCategory {
  * skill-equivalent (USF's `skill` category also has the highest index, so
  * one rule covers both — see learning_path_plan.md §3 item 0). Categories
  * missing `index` are treated as lower priority than any category that
- * declares one, rather than crashing the comparison.
+ * declares one, rather than crashing the comparison. A category literally
+ * coded `skill` always wins — that's the field lern-service reads to credit
+ * skills on completion, even if a framework omits/misorders `index`.
  */
 export function resolveSkillCategory(categories: ICategory[] | undefined): ISkillCategory | null {
   if (!categories?.length) return null;
+  const explicit = categories.find((c) => c.code === 'skill');
+  if (explicit) return { code: explicit.code, terms: explicit.terms ?? EMPTY_TERMS };
   const highest = categories.reduce((best, c) =>
     (c.index ?? -Infinity) > (best.index ?? -Infinity) ? c : best);
-  return { code: highest.code, terms: highest.terms ?? [] };
+  return { code: highest.code, terms: highest.terms ?? EMPTY_TERMS };
 }
 
 /** The prior-assessment course's own framework, when one is linked. Its skill

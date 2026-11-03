@@ -247,7 +247,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
                 { icon: <Info size={16} />, duration: 5000 },
               );
             }
-            // A Level's selected skills are term names from the framework
+            // A Level's selected skills are term codes from the framework
             // being left behind — meaningless (or worse, coincidentally
             // colliding with an unrelated term) under the new one, so they
             // must not linger as orphaned metadata a later switch back
@@ -309,6 +309,19 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchedUserFullName, channelName, form]);
+
+  // Framework terms can resolve after mount (RHF captures defaultValues once),
+  // so re-seed the skill field with its code-normalised value — legacy name
+  // tags then show as selected and are re-saved as codes.
+  const skillField = allFields.find(f => f.isSkillField && f.editable !== false);
+  const skillFieldValueKey = JSON.stringify(skillField?.currentValue ?? null);
+  useEffect(() => {
+    if (!skillField) return;
+    if (JSON.stringify(form.getValues(skillField.code) ?? null) !== skillFieldValueKey) {
+      form.setValue(skillField.code, skillField.currentValue, { shouldDirty: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillField?.code, skillFieldValueKey, form]);
 
   // Per-field editability is computed in useFieldPrepare (computeEditable):
   // outside review modes a field is editable unless the API says otherwise;

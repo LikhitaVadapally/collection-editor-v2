@@ -1,5 +1,7 @@
 import { readContent } from '../api/hierarchy';
 import type { INode } from '../types/editor';
+import type { ITerm } from '../types/framework';
+import { skillLabel, toSkillCodes } from './skillTerms';
 
 export const EVALUATION_COURSE_CATEGORY = 'Evaluation Course';
 
@@ -280,16 +282,22 @@ export function computePathShape(root: INode | undefined): { levelCount: number;
  * own selection) read the SAME resolved skillCategoryCode metadata field —
  * never the reserved Sunbird `competencies` field, whose platform schema
  * expects competency-ontology objects, not plain framework-term strings.
+ * Returned as term codes (legacy name tags normalised via `skillTerms`) so a
+ * skill tagged by name in one place and by code in another counts once.
  */
-export function computeSkillsCovered(root: INode | undefined, skillCategoryCode: string | undefined): string[] {
+export function computeSkillsCovered(
+  root: INode | undefined,
+  skillCategoryCode: string | undefined,
+  skillTerms: ITerm[] = [],
+): string[] {
   if (!root || !skillCategoryCode) return [];
   const covered = new Set<string>();
   const levels = root.children ?? [];
   levels.forEach((lvl, idx) => {
     if (isPrePostSlotAtIndex(levels, idx)) {
-      toStringArray(lvl.children![0].metadata?.[skillCategoryCode]).forEach((s) => covered.add(s));
+      toSkillCodes(lvl.children![0].metadata?.[skillCategoryCode], skillTerms).forEach((s) => covered.add(s));
     } else {
-      toStringArray(lvl.metadata?.[skillCategoryCode]).forEach((s) => covered.add(s));
+      toSkillCodes(lvl.metadata?.[skillCategoryCode], skillTerms).forEach((s) => covered.add(s));
     }
   });
   return Array.from(covered);
@@ -306,15 +314,18 @@ export function computeSkillsCovered(root: INode | undefined, skillCategoryCode:
  * actually covers — a Level's own selection (or the Prior/Outcome
  * Assessment's course tags) stays the single source of truth; this is a
  * read-through mirror onto root, never the other way around. Compares
- * order-insensitively so re-syncing an unchanged set doesn't loop.
+ * order-insensitively so re-syncing an unchanged set doesn't loop. The
+ * stored value is compared RAW (not normalised), so a root still holding
+ * legacy skill names is rewritten once with codes.
  */
 export function resolveSkillsCoveredForSync(
   root: INode | undefined,
   skillCategoryCode: string | undefined,
   treeCache: Record<string, Record<string, unknown>>,
+  skillTerms: ITerm[] = [],
 ): string[] | null {
   if (!root || !skillCategoryCode) return null;
-  const covered = computeSkillsCovered(root, skillCategoryCode);
+  const covered = computeSkillsCovered(root, skillCategoryCode, skillTerms);
   const stored = (treeCache[root.id]?.[skillCategoryCode] ?? root.metadata?.[skillCategoryCode]) as
     string[] | string | undefined;
   const storedArray = toStringArray(stored);
@@ -336,12 +347,13 @@ export function findLevelsWithOutOfScopeSkills(
   root: INode | undefined,
   skillCategoryCode: string | undefined,
   scope: string[],
+  skillTerms: ITerm[] = [],
 ): INode[] {
   if (!root || !skillCategoryCode || scope.length === 0) return [];
   const levels = root.children ?? [];
   return levels.filter((lvl, idx) => {
     if (isPrePostSlotAtIndex(levels, idx)) return false;
-    const skills = toStringArray(lvl.metadata?.[skillCategoryCode]);
+    const skills = toSkillCodes(lvl.metadata?.[skillCategoryCode], skillTerms);
     return skills.some((s) => !scope.includes(s));
   });
 }
@@ -355,18 +367,21 @@ export function findLevelsWithOutOfScopeSkills(
  * Courses missing a skill tag entirely are already caught separately by
  * validateLearningPathStructure's courseMissingSkillTag rule; this is about
  * the Level's selection vs. what its courses are ACTUALLY tagged with.
+ * Both sides are compared as term codes — linked courses may still carry
+ * legacy name tags. Returns the uncovered skills as codes.
  */
 export function computeUncoveredSkills(
   level: INode | undefined,
   selectedSkills: string[],
   skillCategoryCode: string | undefined,
+  skillTerms: ITerm[] = [],
 ): string[] {
   if (!level || !skillCategoryCode || selectedSkills.length === 0) return [];
   const covered = new Set<string>();
   for (const course of level.children ?? []) {
-    toStringArray(course.metadata?.[skillCategoryCode]).forEach((s) => covered.add(s));
+    toSkillCodes(course.metadata?.[skillCategoryCode], skillTerms).forEach((s) => covered.add(s));
   }
-  return selectedSkills.filter((s) => !covered.has(s));
+  return toSkillCodes(selectedSkills, skillTerms).filter((s) => !covered.has(s));
 }
 
 // ---------------------------------------------------------------------------
@@ -407,7 +422,9 @@ export function validateLearningPathStructure(
   skillCategoryCode: string | undefined,
   skillScope: string[],
   treeCache: Record<string, Record<string, unknown>> = {},
+  skillTerms: ITerm[] = [],
 ): LpValidationIssue[] {
+  const labels = (codes: string[]) => codes.map((c) => skillLabel(c, skillTerms)).join(', ');
   const issues: LpValidationIssue[] = [];
   if (!root) return issues;
 
@@ -466,7 +483,7 @@ export function validateLearningPathStructure(
     if (isEmpty) {
       issues.push({ code: 'emptyLevel', nodeId: lvl.id, message: `"${lvl.name}" has no courses yet.` });
     }
-    const skills = skillCategoryCode ? toStringArray(lvl.metadata?.[skillCategoryCode]) : [];
+    const skills = skillCategoryCode ? toSkillCodes(lvl.metadata?.[skillCategoryCode], skillTerms) : [];
     if (skills.length === 0) {
       // An empty Level's "no courses yet" above already covers this — the
       // less specific "needs a skill selected" would be redundant noise.
@@ -479,18 +496,18 @@ export function validateLearningPathStructure(
         if (outOfScope.length > 0) {
           issues.push({
             code: 'levelSkillsOutOfScope', nodeId: lvl.id,
-            message: `"${lvl.name}" has skills outside the current scope: ${outOfScope.join(', ')}.`,
+            message: `"${lvl.name}" has skills outside the current scope: ${labels(outOfScope)}.`,
           });
         }
       }
       // Independent of scope, and runs even when isEmpty (every selected
       // skill is trivially uncovered with zero courses) — naming exactly
       // which skills still need a covering course, not just "no courses yet."
-      const uncovered = computeUncoveredSkills(lvl, skills, skillCategoryCode);
+      const uncovered = computeUncoveredSkills(lvl, skills, skillCategoryCode, skillTerms);
       if (uncovered.length > 0) {
         issues.push({
           code: 'levelSkillsUncovered', nodeId: lvl.id,
-          message: `"${lvl.name}" has no course covering: ${uncovered.join(', ')}.`,
+          message: `"${lvl.name}" has no course covering: ${labels(uncovered)}.`,
         });
       }
     }

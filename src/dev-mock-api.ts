@@ -149,7 +149,9 @@ const MOCK_COURSES: MockCourse[] = [
     identifier: 'do_mock_python_for_data',
     name: 'Python for Data',
     description: 'Course content learners complete as part of this level.',
-    [SKILL_CODE]: ['Python basics', 'Data handling'],
+    // Tagged by term CODE (what the editor saves now); the other fixtures
+    // keep legacy term NAMES so both forms are exercised side by side.
+    [SKILL_CODE]: ['python-basics', 'data-handling'],
     units: [
       unit({
         identifier: 'do_mock_python_u1',
@@ -195,7 +197,7 @@ const MOCK_COURSES: MockCourse[] = [
     name: 'Pandas Deep Dive',
     description: 'Working with tabular data using pandas.',
     framework: 'USF',
-    [SKILL_CODE]: ['Data handling', 'Python basics'],
+    [SKILL_CODE]: ['data-handling', 'Python basics'],
     units: [
       unit({
         identifier: 'do_mock_pandas_u1',
