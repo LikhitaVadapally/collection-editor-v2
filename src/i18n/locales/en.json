@@ -266,7 +266,8 @@
     "addItemAriaLabel": "Add {name} to unit",
     "addToUnitTitle": "Add to unit",
     "selectUnitToAddTitle": "Select a unit to add",
-    "draftOnlyTitle": "Only Draft content can be added"
+    "draftOnlyTitle": "Only Draft content can be added",
+    "moreSkills": "+{count} more"
   },
   "libraryDock": {
     "selectUnitFirstToast": "Select a unit first",
@@ -569,6 +570,14 @@
     "coursesCardDescription": "Courses a learner completes to clear this level — each course may include its own assessments internally. Drag the handle to reorder, use the menu to remove.",
     "coursesEmptyHint": "Not added yet — pick a course from the Library.",
     "courseMetaLabel": "Course",
-    "removeFromLevelMenuItem": "Remove from level"
+    "removeFromLevelMenuItem": "Remove from level",
+    "otherCoursesHeading": "Other courses ({count})",
+    "otherCoursesHint": "These don't teach any of the skills you're browsing for. You can still add one.",
+    "skillScopeFromRoleNote": "Pick which of the target role's skills this level builds. The Library shows courses that teach them first.",
+    "courseNotTeachingRoleBadge": "Doesn't teach this role's skills",
+    "roleChangedCoursesFlaggedToast": "{count} course(s) don't teach any of the new role's skills. They're kept and flagged.",
+    "roleSkillsNotTaughtHeading": "Role skills no course teaches yet",
+    "priorAssessmentMissingRoleSkills": "The Prior Assessment doesn't test these role skills: {skills}",
+    "skillFrameworkChangedToast": "Skill framework changed: the target role and {count} level skill selection(s) were cleared."
   }
 }

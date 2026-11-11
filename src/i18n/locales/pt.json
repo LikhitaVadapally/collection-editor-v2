@@ -266,7 +266,8 @@
     "addItemAriaLabel": "Adicionar {name} à unidade",
     "addToUnitTitle": "Adicionar à unidade",
     "selectUnitToAddTitle": "Selecione uma unidade para adicionar",
-    "draftOnlyTitle": "Somente conteúdo em rascunho pode ser adicionado"
+    "draftOnlyTitle": "Somente conteúdo em rascunho pode ser adicionado",
+    "moreSkills": "+{count} mais"
   },
   "libraryDock": {
     "selectUnitFirstToast": "Selecione uma unidade primeiro",
@@ -569,6 +570,14 @@
     "coursesCardDescription": "Cursos que um aprendiz conclui para cumprir este nível — cada curso pode incluir suas próprias avaliações internas. Arraste a alça para reordenar, use o menu para remover.",
     "coursesEmptyHint": "Ainda não adicionado — escolha um curso na Biblioteca.",
     "courseMetaLabel": "Curso",
-    "removeFromLevelMenuItem": "Remover do nível"
+    "removeFromLevelMenuItem": "Remover do nível",
+    "otherCoursesHeading": "Outros cursos ({count})",
+    "otherCoursesHint": "Estes não ensinam nenhuma das habilidades que você está procurando. Você ainda pode adicionar um.",
+    "skillScopeFromRoleNote": "Escolha quais habilidades da função-alvo este nível desenvolve. A biblioteca mostra primeiro os cursos que as ensinam.",
+    "courseNotTeachingRoleBadge": "Não ensina as habilidades desta função",
+    "roleChangedCoursesFlaggedToast": "{count} curso(s) não ensinam nenhuma habilidade da nova função. Eles foram mantidos e sinalizados.",
+    "roleSkillsNotTaughtHeading": "Habilidades da função que nenhum curso ensina ainda",
+    "priorAssessmentMissingRoleSkills": "A Avaliação prévia não testa estas habilidades da função: {skills}",
+    "skillFrameworkChangedToast": "Estrutura de habilidades alterada: a função-alvo e {count} seleção(ões) de habilidades de nível foram limpas."
   }
 }

@@ -321,3 +321,32 @@
     color: var(--sbx-gray-700);
   }
 }
+
+.otherCourses {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sbx-border, #e5e5e5);
+}
+
+.otherCoursesToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: var(--sbx-text-secondary, #595959);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--sbx-font);
+  cursor: pointer;
+  text-align: left;
+}
+
+.otherCoursesHint {
+  font-size: 12px;
+  color: var(--sbx-text-tertiary, #8c8c8c);
+}

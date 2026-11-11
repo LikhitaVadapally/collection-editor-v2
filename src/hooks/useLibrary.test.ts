@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLpLibraryFilters, buildSearchFields, computeLibraryEmptyReason } from './useLibrary';
+import { buildLpLibraryFilters, buildOtherCoursesFilters, buildSearchFields, computeLibraryEmptyReason } from './useLibrary';
 import { DEFAULT_SEARCH_FIELDS } from '../api/content';
 
 describe('buildLpLibraryFilters', () => {
@@ -45,8 +45,8 @@ describe('buildLpLibraryFilters', () => {
 });
 
 describe('buildSearchFields', () => {
-  it('appends the resolved skill-category code and framework for the LP profile', () => {
-    expect(buildSearchFields(true, 'skill')).toEqual([...DEFAULT_SEARCH_FIELDS, 'skill', 'framework']);
+  it('appends the resolved skill-category code, framework and competencyFramework for the LP profile', () => {
+    expect(buildSearchFields(true, 'skill')).toEqual([...DEFAULT_SEARCH_FIELDS, 'skill', 'framework', 'competencyFramework']);
   });
 
   it('leaves the default fields untouched for the Collection profile', () => {
@@ -89,5 +89,36 @@ describe('computeLibraryEmptyReason', () => {
   it('is null while filling the Prior/Outcome Assessment slot, regardless of skills selected', () => {
     expect(computeLibraryEmptyReason(true, 'NCF', true, 'pre', [])).toBeNull();
     expect(computeLibraryEmptyReason(true, 'NCF', true, 'post', [])).toBeNull();
+  });
+});
+
+describe('buildLpLibraryFilters with a competency framework', () => {
+  const competency = { frameworkId: 'fw_health', roleSkills: ['hand-hygiene', 'ppe-use'] };
+
+  it('scopes by competencyFramework instead of the curriculum framework', () => {
+    const f = buildLpLibraryFilters(null, false, ['hand-hygiene'], 'skill', 'USF', competency);
+    expect(f).toEqual({ primaryCategory: ['Course'], competencyFramework: ['fw_health'], skill: ['hand-hygiene'] });
+  });
+
+  it('makes the Prior/Outcome Assessment pick test the target role\'s skills', () => {
+    const f = buildLpLibraryFilters('pre', true, [], 'skill', undefined, competency);
+    expect(f).toEqual({
+      primaryCategory: ['Evaluation Course'], competencyFramework: ['fw_health'], skill: ['hand-hygiene', 'ppe-use'],
+    });
+  });
+
+  it('leaves the assessment pick unfiltered by skill when there is no role', () => {
+    const f = buildLpLibraryFilters('pre', true, [], 'skill', undefined, { frameworkId: 'fw_health', roleSkills: [] });
+    expect(f).toEqual({ primaryCategory: ['Evaluation Course'], competencyFramework: ['fw_health'] });
+  });
+});
+
+describe('buildOtherCoursesFilters', () => {
+  it('keeps the path skill framework so courses from other frameworks never show', () => {
+    expect(buildOtherCoursesFilters('agro')).toEqual({
+      status: ['Live'],
+      primaryCategory: ['Course'],
+      competencyFramework: ['agro'],
+    });
   });
 });

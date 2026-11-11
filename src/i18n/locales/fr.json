@@ -266,7 +266,8 @@
     "addItemAriaLabel": "Ajouter {name} à l'unité",
     "addToUnitTitle": "Ajouter à l'unité",
     "selectUnitToAddTitle": "Sélectionner une unité pour ajouter",
-    "draftOnlyTitle": "Seul le contenu à l'état de brouillon peut être ajouté"
+    "draftOnlyTitle": "Seul le contenu à l'état de brouillon peut être ajouté",
+    "moreSkills": "+{count} de plus"
   },
   "libraryDock": {
     "selectUnitFirstToast": "Sélectionnez d'abord une unité",
@@ -569,6 +570,14 @@
     "coursesCardDescription": "Cours qu'un apprenant termine pour valider ce niveau — chaque cours peut inclure ses propres évaluations. Faites glisser la poignée pour réorganiser, utilisez le menu pour retirer.",
     "coursesEmptyHint": "Pas encore ajouté — choisissez un cours dans la bibliothèque.",
     "courseMetaLabel": "Cours",
-    "removeFromLevelMenuItem": "Retirer du niveau"
+    "removeFromLevelMenuItem": "Retirer du niveau",
+    "otherCoursesHeading": "Autres cours ({count})",
+    "otherCoursesHint": "Ces cours n'enseignent aucune des compétences recherchées. Vous pouvez quand même en ajouter un.",
+    "skillScopeFromRoleNote": "Choisissez les compétences du rôle cible que ce niveau développe. La bibliothèque affiche d'abord les cours qui les enseignent.",
+    "courseNotTeachingRoleBadge": "N'enseigne pas les compétences de ce rôle",
+    "roleChangedCoursesFlaggedToast": "{count} cours n'enseignent aucune compétence du nouveau rôle. Ils sont conservés et signalés.",
+    "roleSkillsNotTaughtHeading": "Compétences du rôle qu'aucun cours n'enseigne encore",
+    "priorAssessmentMissingRoleSkills": "L'évaluation préalable ne teste pas ces compétences du rôle : {skills}",
+    "skillFrameworkChangedToast": "Cadre de compétences modifié : le rôle cible et {count} sélection(s) de compétences de niveau ont été effacés."
   }
 }

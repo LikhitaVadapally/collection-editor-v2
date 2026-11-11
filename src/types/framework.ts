@@ -39,4 +39,18 @@ export interface IFrameworkDetails {
   orgFrameworks?: Array<{ label: string; value: string }>;
   /** Options for the 'additionalCategories' field — from channel.collectionAdditionalCategories. */
   channelAdditionalCategories?: string[];
+  /** Course skill tagging against a `CompetencyFramework` (lern reads `competencyFramework` +
+   *  `skill`). Absent when the node isn't a Course root. */
+  competency?: ICompetencyTagging;
+}
+
+export interface ICompetencyTagging {
+  /** The channel's Live competency frameworks. */
+  frameworks: Array<{ label: string; value: string }>;
+  /** Whether `frameworks` has loaded — until then a stored id can't be checked. */
+  frameworksLoaded: boolean;
+  /** Leaf skills of the selected competency framework. */
+  skills: Array<{ code: string; name: string }>;
+  /** Learning Path only: live roles of the selected competency framework. */
+  roles?: Array<{ label: string; value: string }>;
 }

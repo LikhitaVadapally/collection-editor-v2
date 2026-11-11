@@ -10,6 +10,8 @@ import { useFrameworkOptions } from '../../hooks/useFrameworkOptions';
 import { useChannelData } from '../../hooks/useChannelData';
 import { useUserFullName } from '../../hooks/useUserFullName';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
+import { useCompetencyFrameworks, useCompetencyRoles, useCompetencySkills } from '../../hooks/useCompetencyFrameworks';
+import { coursesNotTeaching } from '../../utils/lpCompetency';
 import { useLabels } from '../../hooks/useLabels';
 import { useFieldPrepare, SECTION_DISPLAY } from './hooks/useFieldPrepare';
 import type { IPrepareContext } from './hooks/useFieldPrepare';
@@ -77,7 +79,6 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
     categoryMeta?.frameworkMetadata?.orgFWType,
     config?.context?.channel as string | undefined,
   );
-  const frameworkDetails = { organisationFramework, targetFrameworks, orgFrameworks, channelAdditionalCategories: collectionAdditionalCategories };
 
   // selectedNodeId must be declared before it is used in effectiveMeta
   const selectedNodeId = useTreeStore(s => s.selectedNodeId);
@@ -88,6 +89,47 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   const treeCache = useTreeStore(s => s.treeCache);
   const cachedEdits = selectedNodeId ? (treeCache[selectedNodeId] ?? {}) : {};
   const effectiveMeta = { ...nodeMetadata, ...cachedEdits };
+
+  // Course root: skill framework + skills (adaptCompetencyFields). Learning Path root: skill
+  // framework + optional target role (adaptLpCompetencyFields).
+  const primaryCategory = (effectiveMeta.primaryCategory ?? config?.config?.primaryCategory) as string | undefined;
+  const isCourseRoot = isRoot && !isLearningPath && primaryCategory === 'Course';
+  const isLpRoot = isRoot && isLearningPath;
+  const { frameworks: competencyFrameworks, isLoaded: competencyFrameworksLoaded } = useCompetencyFrameworks(
+    config?.context?.channel as string | undefined, isCourseRoot || isLpRoot,
+  );
+  const storedCompetencyFramework = typeof effectiveMeta.competencyFramework === 'string'
+    ? effectiveMeta.competencyFramework : undefined;
+  const competencyOptions = React.useMemo(
+    () => competencyFrameworks.map(f => ({ label: f.name, value: f.identifier })),
+    [competencyFrameworks],
+  );
+  const selectedCompetencyFramework = (isCourseRoot || isLpRoot) && storedCompetencyFramework
+    && competencyFrameworks.some(f => f.identifier === storedCompetencyFramework)
+    ? storedCompetencyFramework : undefined;
+  const { skills: competencySkills } = useCompetencySkills(isCourseRoot ? selectedCompetencyFramework : undefined);
+  const { roles: competencyRoles } = useCompetencyRoles(isLpRoot ? selectedCompetencyFramework : undefined);
+  const roleOptions = React.useMemo(
+    () => competencyRoles.map(r => ({ label: r.name, value: r.id })),
+    [competencyRoles],
+  );
+  const storedTargetRoleRef = useRef(effectiveMeta.targetRole as string | undefined);
+  storedTargetRoleRef.current = effectiveMeta.targetRole as string | undefined;
+  const competencyRolesRef = useRef(competencyRoles);
+  competencyRolesRef.current = competencyRoles;
+  // The stored value at the moment a new one is picked (read by the watch below).
+  const storedCompetencyFrameworkRef = useRef(storedCompetencyFramework);
+  storedCompetencyFrameworkRef.current = storedCompetencyFramework;
+  const frameworkDetails = {
+    organisationFramework, targetFrameworks, orgFrameworks,
+    channelAdditionalCategories: collectionAdditionalCategories,
+    ...(isCourseRoot || isLpRoot ? {
+      competency: {
+        frameworks: competencyOptions, frameworksLoaded: competencyFrameworksLoaded, skills: competencySkills,
+        ...(isLpRoot ? { roles: roleOptions } : {}),
+      },
+    } : {}),
+  };
 
   // Count the active node's direct children — feeds the maxQuestions range.
   const childCount = React.useMemo(() => {
@@ -174,6 +216,17 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   skillCategoryCodeRef.current = skillCategory?.code;
   const REVIEW_MODES = ['review', 'read', 'sourcingreview', 'orgreview'];
 
+  const validateAndReport = () => {
+    form.trigger().then(() => {
+      const errors = form.formState.errors;
+      const fields = allFieldsRef.current;
+      const errorTabs = Array.from(new Set(
+        Object.keys(errors).map(code => fields.find(f => f.code === code)?.tab).filter(Boolean)
+      )) as Array<'details' | 'audience' | 'licensing'>;
+      onFormStatusChangeRef.current(Object.keys(errors).length === 0, errorTabs);
+    });
+  };
+
   // Report initial validity on mount — mirrors Angular's setTimeout(() => emitStatus(), 0).
   // This ensures the parent (SplitBuilderShell) knows the form is invalid from the start
   // when required fields are empty, so Save is disabled before the user touches anything.
@@ -192,16 +245,26 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
 
     // RHF doesn't trigger validation on mount with defaultValues; run it manually so
     // formState.errors is populated before we read it.
-    form.trigger().then(() => {
-      const errors = form.formState.errors;
-      const fields = allFieldsRef.current;
-      const errorTabs = Array.from(new Set(
-        Object.keys(errors).map(code => fields.find(f => f.code === code)?.tab).filter(Boolean)
-      )) as Array<'details' | 'audience' | 'licensing'>;
-      onFormStatusChangeRef.current(Object.keys(errors).length === 0, errorTabs);
-    });
+    validateAndReport();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // once per form instance (form re-mounts per node via key={selectedNodeId})
+
+  // A field the framework doesn't have stops rendering, but RHF keeps its registration, so its
+  // "required" rule and error stay and keep Save disabled with nothing on screen to fix. This
+  // happens to Subjects on every USF course: it renders with the default K-12 fields before the
+  // framework loads, then drops out (and again after switching Course Type to a non-K-12 one).
+  // Unregister fields that leave the field set, then re-validate.
+  const fieldCodesKey = allFields.map(f => f.code).join('|');
+  const prevFieldCodesRef = useRef<string[]>(allFields.map(f => f.code));
+  useEffect(() => {
+    const current = new Set(allFieldsRef.current.map(f => f.code));
+    const removed = prevFieldCodesRef.current.filter(code => !current.has(code));
+    prevFieldCodesRef.current = Array.from(current);
+    if (!removed.length) return;
+    form.unregister(removed, { keepValue: true, keepDefaultValue: true });
+    validateAndReport();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldCodesKey]);
 
   // Subscribe once per form instance (key={selectedNodeId} gives a fresh form per node).
   // Write only the specific field that changed — avoids the RHF timing issue where
@@ -239,7 +302,9 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
           // LP: courses tagged under another curriculum carry skills the new
           // scope can't read — drop them (incl. an emptied pre/post slot) and
           // tell the author what happened.
-          if (isLearningPath) {
+          // A path scoped by a skill framework doesn't scope courses by Curriculum, so a
+          // Curriculum change removes nothing.
+          if (isLearningPath && !storedCompetencyFrameworkRef.current) {
             const removed = useTreeStore.getState().pruneCoursesByFramework(value);
             if (removed > 0) {
               toast(
@@ -261,9 +326,50 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
             }
           }
         }
+        // LP: a new skill framework invalidates the target role (a role belongs to one
+        // framework) and every Level's selected skills.
+        let clearRole = false;
+        if (changedField === 'competencyFramework' && isRoot && isLearningPath
+          && value !== storedCompetencyFrameworkRef.current) {
+          clearRole = !!form.getValues('targetRole');
+          if (clearRole) form.setValue('targetRole', '', { shouldDirty: true });
+          const cleared = useTreeStore.getState().clearLevelSkills(skillCategoryCodeRef.current);
+          if (clearRole || cleared > 0) {
+            toast(
+              lbl.learningPath.skillFrameworkChangedToast.replace('{count}', String(cleared)),
+              { icon: <Info size={16} />, duration: 5000 },
+            );
+          }
+        }
+        // LP: changing the target role keeps every linked course; the ones teaching none of
+        // the new role's skills are flagged (LevelCourseItem), and the author is told how many.
+        if (changedField === 'targetRole' && isRoot && isLearningPath && typeof value === 'string' && value
+          && value !== storedTargetRoleRef.current) {
+          const role = competencyRolesRef.current.find(r => r.id === value);
+          const flagged = role ? coursesNotTeaching(useTreeStore.getState().treeData[0], role.skills).length : 0;
+          if (flagged > 0) {
+            toast(
+              lbl.learningPath.roleChangedCoursesFlaggedToast.replace('{count}', String(flagged)),
+              { icon: <Info size={16} />, duration: 6000 },
+            );
+          }
+        }
+        // Skills are codes of the skill framework being left behind — meaningless
+        // under another one, so clear them with the switch.
+        let clearSkills = false;
+        if (changedField === 'competencyFramework' && isRoot && !isLearningPath && value !== storedCompetencyFrameworkRef.current) {
+          const skills = form.getValues('skill');
+          if (Array.isArray(skills) ? skills.length > 0 : !!skills) {
+            clearSkills = true;
+            form.setValue('skill', [], { shouldDirty: true });
+          }
+        }
         // transformFieldPatch omits UI-only keys (allowECM/setPeriod → null) and
         // maps levels→outcomeDeclaration, instances→{label}.
-        const patch = transformFieldPatch(changedField, value);
+        const fieldPatch = transformFieldPatch(changedField, value);
+        const patch = fieldPatch && (clearSkills || clearRole)
+          ? { ...fieldPatch, ...(clearSkills ? { skill: [] } : {}), ...(clearRole ? { targetRole: '' } : {}) }
+          : fieldPatch;
         if (patch) {
           updateNode(nodeId, patch);
           onFormValueChangeRef.current(patch);
@@ -322,6 +428,25 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillField?.code, skillFieldValueKey, form]);
+
+  // Same for the skill framework: the channel's competency frameworks load after
+  // mount, and only then can a stored id be shown as selected.
+  const competencyField = allFields.find(f => f.code === 'competencyFramework');
+  const competencyFieldValue = competencyField?.currentValue as string | undefined;
+  useEffect(() => {
+    if (!competencyFieldValue) return;
+    if (form.getValues('competencyFramework') !== competencyFieldValue) {
+      form.setValue('competencyFramework', competencyFieldValue, { shouldDirty: false });
+    }
+  }, [competencyFieldValue, form]);
+  const roleField = allFields.find(f => f.code === 'targetRole');
+  const roleFieldValue = roleField?.currentValue as string | undefined;
+  useEffect(() => {
+    if (!roleFieldValue) return;
+    if (form.getValues('targetRole') !== roleFieldValue) {
+      form.setValue('targetRole', roleFieldValue, { shouldDirty: false });
+    }
+  }, [roleFieldValue, form]);
 
   // Per-field editability is computed in useFieldPrepare (computeEditable):
   // outside review modes a field is editable unless the API says otherwise;

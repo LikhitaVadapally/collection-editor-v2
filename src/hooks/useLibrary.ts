@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLibraryStore } from '../store/library.store';
 import { useEditorStore } from '../store/editor.store';
 import { useTreeStore } from '../store/tree.store';
 import { useUiStore } from '../store/ui.store';
 import { useSkillCategory } from './useSkillCategory';
+import { useLpCompetency } from './useLpCompetency';
+import { courseSkills, LP_COMPETENCY_FIELD, teachesAny } from '../utils/lpCompetency';
+import type { IContent } from '../types/content';
 import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum, isAssessmentLevel } from '../utils/lpStructure';
 import { compositeSearch, DEFAULT_SEARCH_FIELDS } from '../api/content';
 import { skillFilterValues } from '../utils/skillTerms';
@@ -28,18 +31,38 @@ export function buildLpLibraryFilters(
   selectedSkills: string[],
   skillCategoryCode: string | undefined,
   frameworkId?: string,
+  competency?: { frameworkId: string; roleSkills: string[] },
 ): Record<string, unknown> {
   const filters: Record<string, unknown> = {
     primaryCategory: [isPickingEvaluationCourse ? EVALUATION_COURSE_CATEGORY : 'Course'],
   };
-  // Courses must belong to the LP root's selected curriculum (framework) —
-  // a course tagged under another framework carries skills the path's scope
-  // can't read.
-  if (frameworkId) filters['framework'] = [frameworkId];
+  if (competency) {
+    // Skill codes only mean something inside their own competency framework.
+    filters[LP_COMPETENCY_FIELD] = [competency.frameworkId];
+    // The Prior/Outcome Assessment must test the target role's skills.
+    if (activeAssessmentSlot && competency.roleSkills.length && skillCategoryCode) {
+      filters[skillCategoryCode] = competency.roleSkills;
+      return filters;
+    }
+  } else if (frameworkId) {
+    // Courses must belong to the LP root's selected curriculum (framework) —
+    // a course tagged under another framework carries skills the path's scope
+    // can't read.
+    filters['framework'] = [frameworkId];
+  }
   if (!activeAssessmentSlot && selectedSkills.length && skillCategoryCode) {
     filters[skillCategoryCode] = selectedSkills;
   }
   return filters;
+}
+
+/**
+ * Filters for the "Other courses" search. It drops the skill filter (composite search can't say
+ * "skill NOT IN"), but keeps the path's skill framework: a course from another framework can't
+ * teach the role at all.
+ */
+export function buildOtherCoursesFilters(competencyFrameworkId: string): Record<string, unknown> {
+  return { status: ['Live'], primaryCategory: ['Course'], [LP_COMPETENCY_FIELD]: [competencyFrameworkId] };
 }
 
 /**
@@ -58,7 +81,7 @@ export function buildSearchFields(
   // 'framework' rides along so a linked course knows which taxonomy its
   // skill tags live under (useSkillCategory resolves via the prior course's
   // framework, which may differ from the LP's own).
-  return [...DEFAULT_SEARCH_FIELDS, skillCategoryCode, 'framework'];
+  return [...DEFAULT_SEARCH_FIELDS, skillCategoryCode, 'framework', LP_COMPETENCY_FIELD];
 }
 
 /**
@@ -90,6 +113,8 @@ export function computeLibraryEmptyReason(
 }
 
 const PAGE_SIZE = 20;
+const OTHER_COURSES_LIMIT = 30;
+const NO_ITEMS: IContent[] = [];
 const EMPTY_SKILLS: string[] = [];
 
 /**
@@ -162,6 +187,13 @@ export function useLibrary() {
     ? getExplicitCurriculum(treeData[0], treeCache)
     : undefined;
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const lp = useLpCompetency();
+  const competency = editorProfile.competencyScoped && lp.frameworkId
+    ? { frameworkId: lp.frameworkId, roleSkills: lp.roleSkills }
+    : undefined;
+  // Courses that teach none of the skills being browsed for — shown apart, collapsed, so a
+  // creator can still add one (target role set only).
+  const [otherContent, setOtherContent] = useState<IContent[]>(NO_ITEMS);
 
   // Same resolved skill-category field a Level's own SkillPicker writes to
   // (never the reserved Sunbird `competencies` field — see lpStructure.ts).
@@ -178,9 +210,11 @@ export function useLibrary() {
 
   const isPickingEvaluationCourse = !!activeAssessmentSlot || !!activeLevelExamTarget;
 
+  // With a target role, a Level with no skills picked yet browses for all of the role's skills.
+  const browseSkills = selectedLevelSkills.length ? selectedLevelSkills : (competency?.roleSkills ?? EMPTY_SKILLS);
   const emptyReason = computeLibraryEmptyReason(
-    editorProfile.competencyScoped, lpFrameworkId, isLpLevel, activeAssessmentSlot, selectedLevelSkills,
-    isPickingEvaluationCourse,
+    editorProfile.competencyScoped, competency?.frameworkId ?? lpFrameworkId, isLpLevel, activeAssessmentSlot,
+    browseSkills, isPickingEvaluationCourse,
   );
 
   const load = useCallback(
@@ -199,6 +233,7 @@ export function useLibrary() {
         // emptyReason above for why each case applies).
         if (emptyReason) {
           store.setContent([], 0);
+          setOtherContent(NO_ITEMS);
           return;
         }
         let filters: Record<string, unknown>;
@@ -207,7 +242,8 @@ export function useLibrary() {
           // with legacy names — match either.
           const lpFilters = buildLpLibraryFilters(
             activeAssessmentSlot, isPickingEvaluationCourse,
-            skillFilterValues(selectedLevelSkills, skillCategory?.terms), skillCategory?.code, lpFrameworkId,
+            skillFilterValues(browseSkills, skillCategory?.terms), skillCategory?.code, lpFrameworkId,
+            competency,
           );
           filters = { status: ['Live'], ...lpFilters };
         } else {
@@ -241,6 +277,26 @@ export function useLibrary() {
         } else {
           store.appendContent(content, count);
         }
+
+        const wantOthers = reset && !!competency?.roleSkills.length && !isPickingEvaluationCourse;
+        if (!wantOthers) {
+          setOtherContent(NO_ITEMS);
+        } else {
+          // Composite search can't express "skill NOT IN", so fetch Courses without the skill
+          // filter and drop the ones that do teach a browsed skill.
+          const shown = new Set(content.map((c) => c.identifier));
+          const others = await compositeSearch({
+            filters: buildOtherCoursesFilters(competency.frameworkId),
+            query,
+            limit: OTHER_COURSES_LIMIT,
+            offset: 0,
+            channel: channel || undefined,
+            sortBy: sortAZ ? { name: 'asc' } : { lastUpdatedOn: 'desc' },
+            fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
+          });
+          setOtherContent(others.content.filter((c) => !shown.has(c.identifier)
+            && !teachesAny(courseSkills(c as unknown as Record<string, unknown>), browseSkills)));
+        }
       } catch (e) {
         console.error('[useLibrary] load error:', e);
       } finally {
@@ -248,7 +304,7 @@ export function useLibrary() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allowedCategories, channel, editorProfile, activeAssessmentSlot, isPickingEvaluationCourse, selectedLevelSkills, skillCategory, lpFrameworkId, emptyReason],
+    [allowedCategories, channel, editorProfile, activeAssessmentSlot, isPickingEvaluationCourse, browseSkills, skillCategory, lpFrameworkId, emptyReason, competency?.frameworkId, competency?.roleSkills],
   );
 
   // Reset any in-progress search when the resolved framework (Curriculum)
@@ -287,7 +343,7 @@ export function useLibrary() {
     if (!editorProfile.competencyScoped) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, selectedLevelSkills.join('|'), lpFrameworkId, selectedNodeId]);
+  }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, selectedLevelSkills.join('|'), lpFrameworkId, selectedNodeId, competency?.frameworkId, competency?.roleSkills.join('|')]);
 
   const search = useCallback(
     (query: string) => {
@@ -355,5 +411,8 @@ export function useLibrary() {
     // LP profile only — why content is (or would be) empty, so the dock can
     // show a guiding message instead of the generic "no results" state.
     emptyReason,
+    // LP with a target role only — courses that teach none of the browsed skills.
+    otherContent,
+    roleSkills: competency?.roleSkills ?? EMPTY_SKILLS,
   };
 }

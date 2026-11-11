@@ -11,6 +11,8 @@ import { useLabels } from '../../hooks/useLabels';
 import { useSkillScope } from '../../hooks/useSkillScope';
 import { computeSkillsCovered, computeUncoveredSkills, isAssessmentLevel } from '../../utils/lpStructure';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
+import { useLpCompetency } from '../../hooks/useLpCompetency';
+import { courseSkills, roleSkillsNotTaught, teachesAny } from '../../utils/lpCompetency';
 import { skillLabel, toSkillCodes } from '../../utils/skillTerms';
 import { ContentRow } from './ContentRow';
 import { SkillPicker } from './SkillPicker';
@@ -58,7 +60,14 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
   const skillTerms = skillCategory?.terms;
   const selectedSkills = skillCategory ? toSkillCodes(activeNodeMeta[skillCategory.code], skillTerms) : [];
   const labelOf = useCallback((s: string) => skillLabel(s, skillTerms), [skillTerms]);
-  const outOfScopeSkills = source === 'prior' ? selectedSkills.filter(s => !scope.includes(s)) : [];
+  const outOfScopeSkills = source !== 'manual' ? selectedSkills.filter(s => !scope.includes(s)) : [];
+  const { roleSkills } = useLpCompetency();
+  const notTaughtRoleSkills = isLpRoot ? roleSkillsNotTaught(treeData[0], roleSkills) : [];
+  // Prior Assessment linked but not testing every role skill (the role decides the path's skills).
+  const priorCourse = isLpRoot && isAssessmentLevel(treeData[0]?.children?.[0])
+    ? treeData[0]?.children?.[0]?.children?.[0] : undefined;
+  const priorMissingRoleSkills = priorCourse && roleSkills.length
+    ? roleSkills.filter(s => !courseSkills(priorCourse).includes(s)) : [];
   const skillsCovered = isLpRoot ? computeSkillsCovered(treeData[0], skillCategory?.code, skillTerms) : [];
   // Selected but no linked course under THIS Level actually carries the tag —
   // independent of (and can overlap with) out-of-scope: a skill can be both.
@@ -137,6 +146,15 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
             )}
           </div>
 
+          {notTaughtRoleSkills.length > 0 && (
+            <div className={styles.skillsCovered}>
+              <span className={styles.heading}>{lbl.learningPath.roleSkillsNotTaughtHeading}</span>
+              <div className={styles.chips}>
+                {notTaughtRoleSkills.map(s => <span key={s} className={[styles.chip, styles.chipWarn].join(' ')}>{labelOf(s)}</span>)}
+              </div>
+            </div>
+          )}
+
           <div className={styles.assessmentsCard}>
             <span className={styles.heading}>{lbl.learningPath.assessmentsCardHeading}</span>
             <span className={styles.emptyHint}>{lbl.learningPath.assessmentsCardDescription}</span>
@@ -144,6 +162,11 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
               <AssessmentSlotItem slot="pre" isEditable={isEditable} />
               <AssessmentSlotItem slot="post" isEditable={isEditable} />
             </div>
+            {priorMissingRoleSkills.length > 0 && (
+              <span className={styles.warnHint} role="status">
+                {lbl.learningPath.priorAssessmentMissingRoleSkills.replace('{skills}', priorMissingRoleSkills.map(labelOf).join(', '))}
+              </span>
+            )}
           </div>
         </>
       )}
@@ -157,9 +180,11 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
           uncovered={uncoveredSkills}
           onChange={handleSkillsChange}
           isEditable={isEditable}
-          description={source === 'prior'
-            ? lbl.learningPath.skillScopeFromPriorNote
-            : lbl.learningPath.skillScopeManualNote}
+          description={source === 'role'
+            ? lbl.learningPath.skillScopeFromRoleNote
+            : source === 'prior'
+              ? lbl.learningPath.skillScopeFromPriorNote
+              : lbl.learningPath.skillScopeManualNote}
         />
       )}
 
@@ -192,6 +217,7 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
                       item={course}
                       onRemove={handleRemoveCourse}
                       isEditable={isEditable}
+                      notTeachingRole={roleSkills.length > 0 && !teachesAny(courseSkills(course), roleSkills)}
                     />
                   ))}
                 </div>

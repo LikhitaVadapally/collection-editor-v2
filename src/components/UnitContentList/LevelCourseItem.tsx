@@ -10,13 +10,15 @@ interface LevelCourseItemProps {
   item: INode;
   onRemove: (id: string) => void;
   isEditable: boolean;
+  /** Target role set and this course teaches none of its skills — kept, but flagged. */
+  notTeachingRole?: boolean;
 }
 
 // A regular course linked to a content Level, shown in the "Courses" card
 // (drag to reorder, menu to remove) — the Level Exam course has its own
 // dedicated row (LevelExamItem) and is filtered out of this list before it
 // reaches here, so it's never shown twice.
-export const LevelCourseItem: React.FC<LevelCourseItemProps> = ({ item, onRemove, isEditable }) => {
+export const LevelCourseItem: React.FC<LevelCourseItemProps> = ({ item, onRemove, isEditable, notTeachingRole = false }) => {
   const lbl = useLabels();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,9 @@ export const LevelCourseItem: React.FC<LevelCourseItemProps> = ({ item, onRemove
       <div className={styles.courseInfo}>
         <span className={styles.courseTitle} title={item.name}>{item.name}</span>
         <span className={styles.courseMeta}>{lbl.learningPath.courseMetaLabel}</span>
+        {notTeachingRole && (
+          <span className={styles.courseFlag} role="status">{lbl.learningPath.courseNotTeachingRoleBadge}</span>
+        )}
       </div>
       {isEditable && (
         <div className={styles.menuWrap} ref={menuRef}>

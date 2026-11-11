@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X } from 'lucide-react';
+import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { EditorMode } from '../../types/editor';
 import type { IContent } from '../../types/content';
 import { CT_FILTERS } from '../../types/content';
@@ -9,6 +9,7 @@ import { useLabels } from '../../hooks/useLabels';
 import { useTreeStore } from '../../store/tree.store';
 import { useEditorStore } from '../../store/editor.store';
 import { useUiStore } from '../../store/ui.store';
+import { getLpCompetencyFramework } from '../../utils/lpCompetency';
 import { getLevelExamCourse, hasExplicitCurriculum, isAssessmentSlotFilled, isEvaluationCourse, isPrePostSlot, wouldBecomeAmbiguousSlot } from '../../utils/lpStructure';
 import { LibraryCard } from './LibraryCard';
 import { FilterChips } from './FilterChips';
@@ -59,7 +60,9 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
     loadMore,
     activeAssessmentSlot,
     emptyReason,
+    otherContent,
   } = useLibrary();
+  const [othersOpen, setOthersOpen] = useState(false);
 
   const { addResource, selectedNodeId, treeData, treeCache } = useTreeStore();
   const setActiveAssessmentSlot = useUiStore(s => s.setActiveAssessmentSlot);
@@ -170,7 +173,9 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
       // Every course carries a skill tag under its OWN framework — with no
       // Curriculum chosen yet, the path has nothing to check that tag
       // against, and the course would just get pruned the moment one is set.
-      if (isLearningPath && !hasExplicitCurriculum(treeData[0], treeCache)) {
+      // A competency (skill) framework scopes the path just as well as a Curriculum does.
+      if (isLearningPath && !hasExplicitCurriculum(treeData[0], treeCache)
+        && !getLpCompetencyFramework(treeData[0], treeCache)) {
         toast.error(lbl.learningPath.selectCurriculumFirstToast);
         return;
       }
@@ -268,6 +273,36 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
       ),
     [activeFilters],
   );
+
+  // Target role set: courses teaching none of the browsed skills, apart and collapsed by default.
+  const renderOtherCourses = () => (otherContent.length > 0 ? (
+    <div className={styles.otherCourses}>
+      <button
+        type="button"
+        className={styles.otherCoursesToggle}
+        onClick={() => setOthersOpen((v) => !v)}
+        aria-expanded={othersOpen}
+      >
+        {othersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span>{lbl.learningPath.otherCoursesHeading.replace('{count}', String(otherContent.length))}</span>
+      </button>
+      {othersOpen && (
+        <>
+          <span className={styles.otherCoursesHint}>{lbl.learningPath.otherCoursesHint}</span>
+          {otherContent.map((item) => (
+            <LibraryCard
+              key={item.identifier}
+              item={item}
+              onAdd={handleAdd}
+              onPreview={handleCardPreview}
+              isDraggable={isEditable}
+              isAdded={addedIds.has(item.identifier)}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  ) : null);
 
   return (
     <div className={styles.dock}>
@@ -415,8 +450,10 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                   {isLoading ? lbl.libraryDock.loadingText : lbl.libraryDock.loadMoreText}
                 </button>
               )}
+              {renderOtherCourses()}
             </>
           ) : (
+            <>
             <div className={styles.emptyState}>
               <Search size={24} />
               {emptyReason === 'noCurriculum' ? (
@@ -436,6 +473,8 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                 </>
               )}
             </div>
+            {renderOtherCourses()}
+            </>
           )}
         </div>
 

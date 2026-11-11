@@ -79,3 +79,18 @@ describe('resolveSkillScope', () => {
     expect(resolveSkillScope(root, skillCategory, {}).source).toBe('manual');
   });
 });
+
+describe('resolveSkillScope with a target role', () => {
+  it('uses the role\'s skills, ahead of any Prior Assessment', () => {
+    const skillCategory = { code: 'skill', terms: [{ identifier: 'a', code: 'a', name: 'A' }] };
+    const root = { id: 'root', children: [] } as unknown as INode;
+    expect(resolveSkillScope(root, skillCategory, {}, ['hand-hygiene', 'ppe-use']))
+      .toEqual({ scope: ['hand-hygiene', 'ppe-use'], source: 'role' });
+  });
+
+  it('falls back to the previous rules with no role', () => {
+    const skillCategory = { code: 'skill', terms: [{ identifier: 'a', code: 'a', name: 'A' }] };
+    const root = { id: 'root', children: [] } as unknown as INode;
+    expect(resolveSkillScope(root, skillCategory, {}, [])).toEqual({ scope: ['a'], source: 'manual' });
+  });
+});

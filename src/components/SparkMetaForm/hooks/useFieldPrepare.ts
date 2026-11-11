@@ -1,4 +1,4 @@
-import type { IFrameworkDetails, ITerm } from '../../../types/framework';
+import type { ICompetencyTagging, IFrameworkDetails, ITerm } from '../../../types/framework';
 import type { IEditorProfile } from '../../../types/profile';
 import { resolveSkillCategory } from '../../../hooks/useSkillCategory';
 import { toSkillCodes } from '../../../utils/skillTerms';
@@ -53,6 +53,8 @@ export const SECTION_DISPLAY: Record<string, { title: string; description?: stri
   'Fourth Section': { title: 'Licensing & Attribution', description: 'Copyright and usage rights information.' },
   'Sixth Section':  { title: 'Licensing & Attribution', description: 'Copyright and usage rights information.' },
   'Consumption policy': { title: 'Consumption policy', description: 'How learners move through this path.' },
+  'Skills': { title: 'Skills', description: 'The skills learners gain from this course.' },
+  'Path skills': { title: 'Skills', description: 'The skill framework and, optionally, the role this path prepares learners for.' },
 };
 
 export interface IFieldConfig extends PreparedField {
@@ -261,9 +263,118 @@ function adaptToFramework(
   isRoot: boolean,
   ctx: IPrepareContext,
 ): PreparedField[] {
-  return ctx.profile?.key === 'learningPath'
-    ? adaptLpCurriculumFields(fields, fw, meta, isRoot)
-    : adaptFrameworkFields(fields, fw, meta, isRoot);
+  if (ctx.profile?.key === 'learningPath') {
+    const curriculum = adaptLpCurriculumFields(fields, fw, meta, isRoot);
+    return isRoot && fw.competency ? adaptLpCompetencyFields(curriculum, fw.competency, meta, ctx) : curriculum;
+  }
+  const adapted = adaptFrameworkFields(fields, fw, meta, isRoot);
+  return isRoot && fw.competency ? adaptCompetencyFields(adapted, fw.competency, meta, ctx) : adapted;
+}
+
+const COMPETENCY_FIELD = 'competencyFramework';
+const SKILL_FIELD = 'skill';
+const SKILLS_SECTION = 'Skills';
+
+/**
+ * Course skill tagging against a competency framework. lern credits a course's skills from two
+ * fields: `competencyFramework` (the CompetencyFramework id) and `skill` (its leaf codes). Neither
+ * is the curriculum `framework` (Course Type), so the author picks the skill framework separately.
+ *
+ * - Adds a "Skill framework" select when the channel has any competency framework.
+ * - Once one is picked, `skill` becomes a multiselect of that framework's leaf skills, replacing
+ *   any curriculum-framework skill field (e.g. USF's), since both would write the same `skill`.
+ * - A stored value that isn't one of the channel's competency frameworks (old courses default to
+ *   `NCF`) shows as unselected, and nothing is written until the author picks one.
+ * With no skill framework picked, the curriculum framework's skill field behaves as before.
+ */
+export function adaptCompetencyFields(
+  fields: PreparedField[],
+  competency: ICompetencyTagging,
+  meta: Record<string, unknown>,
+  ctx: IPrepareContext,
+): PreparedField[] {
+  if (competency.frameworksLoaded && competency.frameworks.length === 0) return fields;
+
+  const stored = typeof meta[COMPETENCY_FIELD] === 'string' ? (meta[COMPETENCY_FIELD] as string) : '';
+  const selected = stored && competency.frameworks.some(f => f.value === stored) ? stored : '';
+  const editable = computeEditable(COMPETENCY_FIELD, true, ctx);
+
+  const frameworkField: PreparedField = {
+    code: COMPETENCY_FIELD, label: 'Skill framework', inputType: 'select',
+    editable, tab: 'details', section: SKILLS_SECTION,
+    placeholder: 'Select a skill framework',
+    options: competency.frameworks,
+    currentValue: selected || undefined,
+  };
+
+  const rest = fields.filter(f => f.code !== COMPETENCY_FIELD && (!selected || f.code !== SKILL_FIELD));
+  if (!selected) return [...rest, frameworkField];
+
+  const terms: ITerm[] = competency.skills.map(sk => ({ identifier: sk.code, code: sk.code, name: sk.name }));
+  const skillValue = toSkillCodes(meta[SKILL_FIELD], terms);
+  const skillField: PreparedField = {
+    code: SKILL_FIELD, label: 'Skills', inputType: 'multiselect',
+    editable: computeEditable(SKILL_FIELD, true, ctx), tab: 'details', section: SKILLS_SECTION,
+    placeholder: 'Select skills',
+    // Keep a stored code the framework no longer has visible, so it isn't dropped silently.
+    options: withStoredCodes(competency.skills.map(sk => ({ label: sk.name, value: sk.code })), skillValue),
+    sourceCategory: SKILL_FIELD,
+    isSkillField: true,
+    currentValue: skillValue,
+  };
+  return [...rest, frameworkField, skillField];
+}
+
+const TARGET_ROLE_FIELD = 'targetRole';
+
+/**
+ * Learning Path root: "Skill framework" (`competencyFramework`) and an optional "Target role"
+ * (`targetRole`, a lern role code) — the two fields lern reads for skill coverage. The role's
+ * skills then scope every Level (useSkillScope). Once a skill framework is picked it scopes the
+ * Library instead of the Curriculum, so the Curriculum fields stop being required.
+ */
+export function adaptLpCompetencyFields(
+  fields: PreparedField[],
+  competency: ICompetencyTagging,
+  meta: Record<string, unknown>,
+  ctx: IPrepareContext,
+): PreparedField[] {
+  if (competency.frameworksLoaded && competency.frameworks.length === 0) return fields;
+
+  const stored = typeof meta[COMPETENCY_FIELD] === 'string' ? (meta[COMPETENCY_FIELD] as string) : '';
+  const selected = stored && competency.frameworks.some(f => f.value === stored) ? stored : '';
+  const rest = fields
+    .filter(f => f.code !== COMPETENCY_FIELD && f.code !== TARGET_ROLE_FIELD)
+    .map(f => (selected && f.section === CURRICULUM_SECTION ? { ...f, required: false } : f));
+
+  const frameworkField: PreparedField = {
+    code: COMPETENCY_FIELD, label: 'Skill framework', inputType: 'select',
+    editable: computeEditable(COMPETENCY_FIELD, true, ctx), tab: 'details', section: 'Path skills',
+    placeholder: 'Select a skill framework',
+    options: competency.frameworks,
+    currentValue: selected || undefined,
+  };
+  const roles = competency.roles ?? [];
+  if (!selected || roles.length === 0) return [...rest, frameworkField];
+
+  const storedRole = typeof meta[TARGET_ROLE_FIELD] === 'string' ? (meta[TARGET_ROLE_FIELD] as string) : '';
+  const roleField: PreparedField = {
+    code: TARGET_ROLE_FIELD, label: 'Target role (optional)', inputType: 'select',
+    editable: computeEditable(TARGET_ROLE_FIELD, true, ctx), tab: 'details', section: 'Path skills',
+    placeholder: 'No target role',
+    // The role is optional, and a select can't otherwise be cleared.
+    options: [{ label: 'No target role', value: '' }, ...roles],
+    currentValue: storedRole && roles.some(r => r.value === storedRole) ? storedRole : undefined,
+  };
+  return [...rest, frameworkField, roleField];
+}
+
+function withStoredCodes(
+  options: Array<{ label: string; value: string }>,
+  values: string[],
+): Array<{ label: string; value: string }> {
+  const have = new Set(options.map(o => o.value));
+  return [...options, ...values.filter(v => !have.has(v)).map(v => ({ label: v, value: v }))];
 }
 
 // ----- Editability (mirrors Angular ifFieldIsEditable) -----------------------

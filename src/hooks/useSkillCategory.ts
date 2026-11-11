@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { useEditorStore } from '../store/editor.store';
 import { useTreeStore } from '../store/tree.store';
 import { useFramework } from './useFramework';
+import { useLpCompetency } from './useLpCompetency';
+import { SKILL_FIELD } from '../utils/lpCompetency';
 import { isAssessmentLevel } from '../utils/lpStructure';
 import type { ICategory, ITerm } from '../types/framework';
 import type { INode } from '../types/editor';
@@ -55,5 +58,13 @@ export function useSkillCategory(): ISkillCategory | null {
   const frameworkId = resolvePriorCourseFramework(treeData[0])
     ?? (contentFramework ?? config?.context?.framework) as string | undefined;
   const { organisationFramework } = useFramework(frameworkId);
-  return resolveSkillCategory(organisationFramework?.categories);
+  // An LP scoped by a competency framework tags with its leaf skills under `skill` (the field lern
+  // credits), not the curriculum framework's skill category.
+  const lp = useLpCompetency();
+  const curriculumSkills = resolveSkillCategory(organisationFramework?.categories);
+  return useMemo(
+    () => (lp.frameworkId ? { code: SKILL_FIELD, terms: lp.terms } : curriculumSkills),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lp.frameworkId, lp.terms, curriculumSkills?.code, curriculumSkills?.terms],
+  );
 }

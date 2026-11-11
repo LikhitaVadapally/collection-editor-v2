@@ -7,6 +7,7 @@ import { useIsDraftStatus, useSelectedNodeIsUnit } from '../../hooks/useContentS
 import { useLabels } from '../../hooks/useLabels';
 import { useEditorStore } from '../../store/editor.store';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
+import { useLpCompetency } from '../../hooks/useLpCompetency';
 import { skillLabel } from '../../utils/skillTerms';
 import styles from './LibraryCard.module.scss';
 
@@ -40,12 +41,16 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
 
   const competencyScoped = useEditorStore(s => s.editorProfile.competencyScoped);
   const skillCategory = useSkillCategory();
+  const { roleSkills } = useLpCompetency();
   const skillTags = competencyScoped && skillCategory
     ? (() => {
         const raw = (item as unknown as Record<string, unknown>)[skillCategory.code];
         const values = Array.isArray(raw) ? raw as string[] : raw ? [String(raw)] : [];
+        // With a target role, the skills it needs come first.
+        const wanted = new Set(roleSkills);
+        const ordered = [...values.filter(v => wanted.has(String(v))), ...values.filter(v => !wanted.has(String(v)))];
         // Stored as term codes (or legacy names) — show the term name.
-        return Array.from(new Set(values.map(v => skillLabel(String(v), skillCategory.terms))));
+        return Array.from(new Set(ordered.map(v => skillLabel(String(v), skillCategory.terms))));
       })()
     : [];
 
@@ -90,6 +95,11 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
         {skillTags.length > 0 && (
           <span className={styles.skillTags}>
             {skillTags.slice(0, 3).map(t => <span key={t} className={styles.skillTag}>{t}</span>)}
+            {skillTags.length > 3 && (
+              <span className={styles.skillTag} title={skillTags.slice(3).join(', ')}>
+                {lbl.libraryCard.moreSkills.replace('{count}', String(skillTags.length - 3))}
+              </span>
+            )}
           </span>
         )}
       </div>

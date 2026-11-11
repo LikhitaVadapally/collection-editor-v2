@@ -266,7 +266,8 @@
     "addItemAriaLabel": "إضافة {name} إلى الوحدة",
     "addToUnitTitle": "إضافة إلى الوحدة",
     "selectUnitToAddTitle": "اختر وحدة للإضافة إليها",
-    "draftOnlyTitle": "يمكن إضافة المحتوى المسودة فقط"
+    "draftOnlyTitle": "يمكن إضافة المحتوى المسودة فقط",
+    "moreSkills": "+{count} أخرى"
   },
   "libraryDock": {
     "selectUnitFirstToast": "اختر وحدة أولاً",
@@ -569,6 +570,14 @@
     "coursesCardDescription": "المقررات التي يُتمّها المتعلم لاجتياز هذا المستوى — قد يتضمن كل مقرر تقييماته الخاصة. اسحب المقبض لإعادة الترتيب، واستخدم القائمة للإزالة.",
     "coursesEmptyHint": "لم تتم الإضافة بعد — اختر مقررًا من المكتبة.",
     "courseMetaLabel": "مقرر",
-    "removeFromLevelMenuItem": "إزالة من المستوى"
+    "removeFromLevelMenuItem": "إزالة من المستوى",
+    "otherCoursesHeading": "دورات أخرى ({count})",
+    "otherCoursesHint": "لا تُعلّم هذه أيًا من المهارات التي تبحث عنها. لا يزال بإمكانك إضافة واحدة.",
+    "skillScopeFromRoleNote": "اختر مهارات الدور المستهدف التي يبنيها هذا المستوى. تعرض المكتبة الدورات التي تُعلّمها أولًا.",
+    "courseNotTeachingRoleBadge": "لا تُعلّم مهارات هذا الدور",
+    "roleChangedCoursesFlaggedToast": "{count} دورة/دورات لا تُعلّم أيًا من مهارات الدور الجديد. تم الإبقاء عليها ووضع علامة عليها.",
+    "roleSkillsNotTaughtHeading": "مهارات الدور التي لا تُعلّمها أي دورة بعد",
+    "priorAssessmentMissingRoleSkills": "التقييم المسبق لا يختبر مهارات الدور هذه: {skills}",
+    "skillFrameworkChangedToast": "تم تغيير إطار المهارات: تم مسح الدور المستهدف و{count} من اختيارات مهارات المستوى."
   }
 }
