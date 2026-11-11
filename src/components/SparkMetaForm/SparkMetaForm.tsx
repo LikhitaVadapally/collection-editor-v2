@@ -12,6 +12,7 @@ import { useUserFullName } from '../../hooks/useUserFullName';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useCompetencyFrameworks, useCompetencyRoles, useCompetencySkills } from '../../hooks/useCompetencyFrameworks';
 import { coursesNotTeaching } from '../../utils/lpCompetency';
+import { EVALUATION_COURSE_CATEGORY } from '../../utils/lpStructure';
 import { useLabels } from '../../hooks/useLabels';
 import { useFieldPrepare, SECTION_DISPLAY } from './hooks/useFieldPrepare';
 import type { IPrepareContext } from './hooks/useFieldPrepare';
@@ -93,7 +94,10 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   // Course root: skill framework + skills (adaptCompetencyFields). Learning Path root: skill
   // framework + optional target role (adaptLpCompetencyFields).
   const primaryCategory = (effectiveMeta.primaryCategory ?? config?.config?.primaryCategory) as string | undefined;
-  const isCourseRoot = isRoot && !isLearningPath && primaryCategory === 'Course';
+  // Evaluation Courses are tagged too: a learning path filters its Prior/Outcome Assessment and
+  // Level Exam picks by skill framework and skills.
+  const isCourseRoot = isRoot && !isLearningPath
+    && (primaryCategory === 'Course' || primaryCategory === EVALUATION_COURSE_CATEGORY);
   const isLpRoot = isRoot && isLearningPath;
   const { frameworks: competencyFrameworks, isLoaded: competencyFrameworksLoaded } = useCompetencyFrameworks(
     config?.context?.channel as string | undefined, isCourseRoot || isLpRoot,
