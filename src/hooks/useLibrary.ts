@@ -112,6 +112,17 @@ export function computeLibraryEmptyReason(
   return null;
 }
 
+/**
+ * Skills the LP Library browses for. A Level's own picks win. With a target role, only a Level's
+ * picks count: the LP root stores the union of every Level's skills in the same field, and
+ * browsing by that would push the role's courses into "Other courses". Otherwise the role's
+ * skills (empty without a role).
+ */
+export function resolveBrowseSkills(isLpLevel: boolean, nodeSkills: string[], roleSkills: string[]): string[] {
+  const picks = isLpLevel || !roleSkills.length ? nodeSkills : [];
+  return picks.length ? picks : roleSkills;
+}
+
 const PAGE_SIZE = 20;
 const OTHER_COURSES_LIMIT = 30;
 const NO_ITEMS: IContent[] = [];
@@ -195,12 +206,6 @@ export function useLibrary() {
   // creator can still add one (target role set only).
   const [otherContent, setOtherContent] = useState<IContent[]>(NO_ITEMS);
 
-  // Same resolved skill-category field a Level's own SkillPicker writes to
-  // (never the reserved Sunbird `competencies` field — see lpStructure.ts).
-  const selectedLevelSkills = skillCategory && Array.isArray(activeNodeMeta[skillCategory.code])
-    ? activeNodeMeta[skillCategory.code] as string[]
-    : EMPTY_SKILLS;
-
   // A regular content Level (not root, not a pre/post/level-assessment slot
   // — those hold exactly one course and have no skill picker of their own).
   // Only this context requires skills to be picked before browsing.
@@ -208,10 +213,16 @@ export function useLibrary() {
   const isLpLevel = editorProfile.competencyScoped
     && !!selectedNode?.isFolder && !!selectedNode.parent && !isAssessmentLevel(selectedNode);
 
+  // Same resolved skill-category field a Level's own SkillPicker writes to
+  // (never the reserved Sunbird `competencies` field — see lpStructure.ts).
+  const nodeSkills = skillCategory && Array.isArray(activeNodeMeta[skillCategory.code])
+    ? activeNodeMeta[skillCategory.code] as string[]
+    : EMPTY_SKILLS;
+  const selectedLevelSkills = isLpLevel || !competency?.roleSkills.length ? nodeSkills : EMPTY_SKILLS;
+
   const isPickingEvaluationCourse = !!activeAssessmentSlot || !!activeLevelExamTarget;
 
-  // With a target role, a Level with no skills picked yet browses for all of the role's skills.
-  const browseSkills = selectedLevelSkills.length ? selectedLevelSkills : (competency?.roleSkills ?? EMPTY_SKILLS);
+  const browseSkills = resolveBrowseSkills(isLpLevel, nodeSkills, competency?.roleSkills ?? EMPTY_SKILLS);
   const emptyReason = computeLibraryEmptyReason(
     editorProfile.competencyScoped, competency?.frameworkId ?? lpFrameworkId, isLpLevel, activeAssessmentSlot,
     browseSkills, isPickingEvaluationCourse,

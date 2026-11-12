@@ -229,6 +229,7 @@
     "closeAriaLabel": "إغلاق",
     "confirmPublishPrefix": "هل أنت متأكد من رغبتك في نشر هذا",
     "checklistInstructions": "يرجى تأكيد التحقق من جميع العناصر التالية (بتحديد مربعات الاختيار) قبل أن تتمكن من النشر:",
+    "selectAllLabel": "تحديد الكل",
     "noButton": "لا",
     "yesButton": "نعم"
   },

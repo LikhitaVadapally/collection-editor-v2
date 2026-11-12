@@ -43,6 +43,9 @@ interface SparkMetaFormProps {
   onFormStatusChange: (isValid: boolean, errorTabs: Array<'details' | 'audience' | 'licensing'>) => void;
 }
 
+const isEmptyValue = (v: unknown): boolean =>
+  v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+
 export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   nodeMetadata, activeTab, isRoot, isFolder, editorMode,
   onFormValueChange, onFormStatusChange,
@@ -124,6 +127,8 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   // The stored value at the moment a new one is picked (read by the watch below).
   const storedCompetencyFrameworkRef = useRef(storedCompetencyFramework);
   storedCompetencyFrameworkRef.current = storedCompetencyFramework;
+  const storedFrameworkRef = useRef(effectiveMeta.framework as string | undefined);
+  storedFrameworkRef.current = effectiveMeta.framework as string | undefined;
   const frameworkDetails = {
     organisationFramework, targetFrameworks, orgFrameworks,
     channelAdditionalCategories: collectionAdditionalCategories,
@@ -191,6 +196,19 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
 
   useCascade(form, allFields);
 
+  // Putting a loaded value into the form after mount (late-arriving field, framework terms,
+  // async defaults) isn't an edit. The watch below writes it to the tree silently, so the
+  // editor doesn't show "Unsaved" (e.g. a stored ["English"] seeded into a single select).
+  const seedingRef = useRef(false);
+  const seedValue = (code: string, value: unknown) => {
+    seedingRef.current = true;
+    try {
+      form.setValue(code, value, { shouldDirty: false });
+    } finally {
+      seedingRef.current = false;
+    }
+  };
+
   // Keep refs pointing at the latest values so the watch callback (subscribed once
   // per form instance) never closes over stale data.
   const { updateNode } = useTreeStore();
@@ -244,7 +262,8 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
           .filter(f => f.currentValue !== undefined && f.currentValue !== null)
           .map(f => [f.code, f.currentValue])
       );
-      if (Object.keys(patch).length > 0) updateNode(nodeId, patch);
+      // Load-time normalization, not an edit: don't show "Unsaved".
+      if (Object.keys(patch).length > 0) updateNode(nodeId, patch, undefined, { silent: true });
     }
 
     // RHF doesn't trigger validation on mount with defaultValues; run it manually so
@@ -253,20 +272,29 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // once per form instance (form re-mounts per node via key={selectedNodeId})
 
-  // A field the framework doesn't have stops rendering, but RHF keeps its registration, so its
-  // "required" rule and error stay and keep Save disabled with nothing on screen to fix. This
-  // happens to Subjects on every USF course: it renders with the default K-12 fields before the
-  // framework loads, then drops out (and again after switching Course Type to a non-K-12 one).
-  // Unregister fields that leave the field set, then re-validate.
+  // The field set changes after mount as the framework loads, but RHF captured defaultValues once.
+  // - A field that leaves the set stops rendering, yet RHF keeps its registration, so its
+  //   "required" rule and error stay and keep Save disabled with nothing on screen to fix (Subjects
+  //   on every USF course: it renders with the default K-12 fields before USF loads). Unregister it.
+  // - A field that joins the set has no default, so its stored value shows empty (a learning
+  //   path's Curriculum, Board, Medium and Grade after reload). Seed it, parents before children
+  //   (the field list is in cascade order).
   const fieldCodesKey = allFields.map(f => f.code).join('|');
   const prevFieldCodesRef = useRef<string[]>(allFields.map(f => f.code));
   useEffect(() => {
-    const current = new Set(allFieldsRef.current.map(f => f.code));
+    const fields = allFieldsRef.current;
+    const current = new Set(fields.map(f => f.code));
+    const prev = new Set(prevFieldCodesRef.current);
     const removed = prevFieldCodesRef.current.filter(code => !current.has(code));
+    const added = fields.filter(f => !prev.has(f.code));
     prevFieldCodesRef.current = Array.from(current);
-    if (!removed.length) return;
-    form.unregister(removed, { keepValue: true, keepDefaultValue: true });
-    validateAndReport();
+    if (removed.length) form.unregister(removed, { keepValue: true, keepDefaultValue: true });
+    for (const f of added) {
+      const stored = f.currentValue;
+      if (isEmptyValue(stored) || !isEmptyValue(form.getValues(f.code))) continue;
+      seedValue(f.code, stored);
+    }
+    if (removed.length || added.length) validateAndReport();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldCodesKey]);
 
@@ -308,7 +336,8 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
           // tell the author what happened.
           // A path scoped by a skill framework doesn't scope courses by Curriculum, so a
           // Curriculum change removes nothing.
-          if (isLearningPath && !storedCompetencyFrameworkRef.current) {
+          // Seeding the stored Curriculum after load isn't a change: only a different value prunes.
+          if (isLearningPath && !storedCompetencyFrameworkRef.current && value !== storedFrameworkRef.current) {
             const removed = useTreeStore.getState().pruneCoursesByFramework(value);
             if (removed > 0) {
               toast(
@@ -375,7 +404,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
           ? { ...fieldPatch, ...(clearSkills ? { skill: [] } : {}), ...(clearRole ? { targetRole: '' } : {}) }
           : fieldPatch;
         if (patch) {
-          updateNode(nodeId, patch);
+          updateNode(nodeId, patch, undefined, seedingRef.current ? { silent: true } : undefined);
           onFormValueChangeRef.current(patch);
         }
       } else if (!changedField) {
@@ -389,7 +418,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
           nodeTitle: nodeTitleRef.current,
         });
         if (Object.keys(patch).length > 0) {
-          updateNode(nodeId, patch);
+          updateNode(nodeId, patch, undefined, seedingRef.current ? { silent: true } : undefined);
           onFormValueChangeRef.current(patch);
         }
       }
@@ -414,7 +443,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
       if (!field || field.currentValue === undefined || field.currentValue === null || field.currentValue === '') continue;
       const formValue = form.getValues(code);
       if (formValue === undefined || formValue === null || formValue === '') {
-        form.setValue(code, field.currentValue, { shouldDirty: false });
+        seedValue(code, field.currentValue);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -428,7 +457,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   useEffect(() => {
     if (!skillField) return;
     if (JSON.stringify(form.getValues(skillField.code) ?? null) !== skillFieldValueKey) {
-      form.setValue(skillField.code, skillField.currentValue, { shouldDirty: false });
+      seedValue(skillField.code, skillField.currentValue);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillField?.code, skillFieldValueKey, form]);
@@ -440,7 +469,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   useEffect(() => {
     if (!competencyFieldValue) return;
     if (form.getValues('competencyFramework') !== competencyFieldValue) {
-      form.setValue('competencyFramework', competencyFieldValue, { shouldDirty: false });
+      seedValue('competencyFramework', competencyFieldValue);
     }
   }, [competencyFieldValue, form]);
   const roleField = allFields.find(f => f.code === 'targetRole');
@@ -448,7 +477,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   useEffect(() => {
     if (!roleFieldValue) return;
     if (form.getValues('targetRole') !== roleFieldValue) {
-      form.setValue('targetRole', roleFieldValue, { shouldDirty: false });
+      seedValue('targetRole', roleFieldValue);
     }
   }, [roleFieldValue, form]);
 

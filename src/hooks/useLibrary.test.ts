@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLpLibraryFilters, buildOtherCoursesFilters, buildSearchFields, computeLibraryEmptyReason } from './useLibrary';
+import { buildLpLibraryFilters, buildOtherCoursesFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason } from './useLibrary';
 import { DEFAULT_SEARCH_FIELDS } from '../api/content';
 
 describe('buildLpLibraryFilters', () => {
@@ -120,5 +120,26 @@ describe('buildOtherCoursesFilters', () => {
       primaryCategory: ['Course'],
       competencyFramework: ['agro'],
     });
+  });
+});
+
+describe('resolveBrowseSkills', () => {
+  const role = ['farmer-counselling', 'field-visit-planning'];
+
+  it('on the LP root with a role, ignores the root\'s stored Level-skills union and browses the role', () => {
+    expect(resolveBrowseSkills(false, ['soil-sampling', 'staff-briefing'], role)).toEqual(role);
+  });
+
+  it('on a Level, its own picks win over the role', () => {
+    expect(resolveBrowseSkills(true, ['farmer-counselling'], role)).toEqual(['farmer-counselling']);
+  });
+
+  it('on a Level with no picks, browses the role', () => {
+    expect(resolveBrowseSkills(true, [], role)).toEqual(role);
+  });
+
+  it('without a role, keeps using the selected node\'s skills as before', () => {
+    expect(resolveBrowseSkills(false, ['Java'], [])).toEqual(['Java']);
+    expect(resolveBrowseSkills(true, [], [])).toEqual([]);
   });
 });

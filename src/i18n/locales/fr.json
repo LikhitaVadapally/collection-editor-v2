@@ -229,6 +229,7 @@
     "closeAriaLabel": "Fermer",
     "confirmPublishPrefix": "Êtes-vous sûr de vouloir publier ce",
     "checklistInstructions": "Veuillez confirmer que TOUS les éléments suivants sont vérifiés (en cochant les cases) avant de pouvoir publier :",
+    "selectAllLabel": "Tout sélectionner",
     "noButton": "Non",
     "yesButton": "Oui"
   },

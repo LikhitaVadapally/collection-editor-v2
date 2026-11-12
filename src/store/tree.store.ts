@@ -15,7 +15,8 @@ interface TreeState {
   // actions
   setTreeData: (nodes: INode[]) => void;
   selectNode: (id: string) => void;
-  updateNode: (id: string, patch: Record<string, unknown>, extraMirrorKeys?: string[]) => void;
+  /** `silent` skips marking the tree dirty (load-time normalization, not a user edit). */
+  updateNode: (id: string, patch: Record<string, unknown>, extraMirrorKeys?: string[], opts?: { silent?: boolean }) => void;
   addNode: (parentId: string, type: 'unit' | 'subunit') => string;
   deleteNode: (id: string) => boolean;
   reorderChildren: (parentId: string, fromIndex: number, toIndex: number) => void;
@@ -236,7 +237,11 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     set({ selectedNodeId: id, breadcrumb, activeNodeMeta });
   },
 
-  updateNode: (id, patch, extraMirrorKeys) => {
+  updateNode: (id, patch, extraMirrorKeys, opts) => {
+    // A patch that only re-writes what the node already holds (form re-seeding a loaded value)
+    // isn't an edit, so it must not show "Unsaved".
+    const before = { ...(bfsFind(get().treeData, id)?.metadata ?? {}), ...(get().treeCache[id] ?? {}) };
+    const changes = Object.entries(patch).some(([k, v]) => JSON.stringify(v) !== JSON.stringify(before[k]));
     set((state) => ({
       treeData: deepMergeNode(state.treeData, id, patch, extraMirrorKeys),
       treeCache: {
@@ -255,7 +260,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
     // Any node edit (root/unit/leaf form, inline title) must mark the tree
     // dirty so the debounced autosave in useSaveHierarchy actually runs.
-    get().markDirty();
+    if (changes && !opts?.silent) get().markDirty();
   },
 
   addNode: (parentId, _type) => {

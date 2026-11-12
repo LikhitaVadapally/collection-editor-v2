@@ -142,6 +142,16 @@ export const PublishChecklist: React.FC<PublishChecklistProps> = ({
               <p className={styles.sectionTitle}>
                 {lbl.publishChecklist.checklistInstructions}
               </p>
+              <label className={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={allConfirmed}
+                  onChange={(e) => setConfirmed(
+                    Object.fromEntries(checklistItems.map((c) => [c.code, e.target.checked])),
+                  )}
+                />
+                <span><strong>{lbl.publishChecklist.selectAllLabel}</strong></span>
+              </label>
               {checklistItems.map((item) => (
                 <label key={item.code} className={styles.checkRow}>
                   <input

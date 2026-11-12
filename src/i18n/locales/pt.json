@@ -229,6 +229,7 @@
     "closeAriaLabel": "Fechar",
     "confirmPublishPrefix": "Tem certeza de que deseja publicar este(a)",
     "checklistInstructions": "Confirme que TODOS os itens a seguir foram verificados (marcando as caixas de seleção) antes de publicar:",
+    "selectAllLabel": "Selecionar tudo",
     "noButton": "Não",
     "yesButton": "Sim"
   },
