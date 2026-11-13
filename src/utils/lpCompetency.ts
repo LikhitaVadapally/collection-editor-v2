@@ -57,6 +57,15 @@ export function teachesAny(skills: string[], wanted: string[]): boolean {
 }
 
 /**
+ * Whether every one of a course's skills is in `allowed` (and it has at least one) — the client
+ * side of Knowlg's `subsetOf` search filter, which the Level Library uses.
+ */
+export function teachesOnly(skills: string[], allowed: string[]): boolean {
+  const set = new Set(allowed);
+  return skills.length > 0 && skills.every((s) => set.has(s));
+}
+
+/**
  * Regular courses linked under content Levels that teach none of the given skills — the courses
  * flagged after the target role changes (they are kept, never removed silently). Assessment-slot
  * and Level Exam courses are excluded: they test skills, they aren't picked to teach them.

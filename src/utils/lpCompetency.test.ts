@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  courseSkills, coursesNotTeaching, getLpCompetencyFramework, getLpTargetRole, roleSkillsNotTaught, teachesAny,
+  courseSkills, coursesNotTeaching, getLpCompetencyFramework, getLpTargetRole, roleSkillsNotTaught, teachesAny, teachesOnly,
 } from './lpCompetency';
 import type { INode } from '../types/editor';
 
@@ -37,6 +37,13 @@ describe('lpCompetency', () => {
     const lp = { id: 'r', isFolder: true, metadata: {}, children: [level('l', [fr])] } as unknown as INode;
     expect(coursesNotTeaching(lp, ['FR2'], 'cuisine')).toEqual([]);
     expect(roleSkillsNotTaught(lp, ['FR2', 'IT1'], 'cuisine')).toEqual(['IT1']);
+  });
+
+  it('teachesOnly mirrors subsetOf: every skill allowed, at least one', () => {
+    expect(teachesOnly(['s1'], ['s1', 's2', 's3'])).toBe(true);
+    expect(teachesOnly(['s1', 's2'], ['s1', 's2', 's3'])).toBe(true);
+    expect(teachesOnly(['s1', 's4'], ['s1', 's2', 's3'])).toBe(false);
+    expect(teachesOnly([], ['s1'])).toBe(false);
   });
 
   it('teachesAny is true when no skills are wanted', () => {

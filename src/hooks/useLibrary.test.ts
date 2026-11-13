@@ -12,7 +12,7 @@ describe('buildLpLibraryFilters', () => {
     expect(buildLpLibraryFilters(null, true, [], 'skill')).toEqual({ primaryCategory: ['Evaluation Course'] });
     expect(buildLpLibraryFilters(null, true, ['Java'], 'skill')).toEqual({
       primaryCategory: ['Evaluation Course'],
-      skill: ['Java'],
+      skill: { subsetOf: ['Java'] },
     });
   });
 
@@ -20,10 +20,15 @@ describe('buildLpLibraryFilters', () => {
     expect(buildLpLibraryFilters(null, false, [], 'skill')).toEqual({ primaryCategory: ['Course'] });
   });
 
-  it('filters Courses by the selected skills under the resolved skill-category code', () => {
+  // Only courses whose skills all lie within the Level's selection (Knowlg subsetOf).
+  it('filters Courses to the ones teaching only the selected skills, under the resolved skill-category code', () => {
     expect(buildLpLibraryFilters(null, false, ['Python programming', 'Java'], 'skill')).toEqual({
       primaryCategory: ['Course'],
-      skill: ['Python programming', 'Java'],
+      skill: { subsetOf: ['Python programming', 'Java'] },
+    });
+    expect(buildLpLibraryFilters(null, false, ['cuisine-french'], 'cuisine')).toEqual({
+      primaryCategory: ['Course'],
+      cuisine: { subsetOf: ['cuisine-french'] },
     });
   });
 
@@ -39,7 +44,7 @@ describe('buildLpLibraryFilters', () => {
     expect(buildLpLibraryFilters(null, false, ['Java'], 'skill', 'usf')).toEqual({
       primaryCategory: ['Course'],
       framework: ['usf'],
-      skill: ['Java'],
+      skill: { subsetOf: ['Java'] },
     });
   });
 });
@@ -97,7 +102,7 @@ describe('buildLpLibraryFilters with a competency framework', () => {
 
   it('scopes by competencyFramework instead of the curriculum framework', () => {
     const f = buildLpLibraryFilters(null, false, ['hand-hygiene'], 'skill', 'USF', competency);
-    expect(f).toEqual({ primaryCategory: ['Course'], competencyFramework: ['fw_health'], skill: ['hand-hygiene'] });
+    expect(f).toEqual({ primaryCategory: ['Course'], competencyFramework: ['fw_health'], skill: { subsetOf: ['hand-hygiene'] } });
   });
 
   it('makes the Prior/Outcome Assessment pick test the target role\'s skills', () => {

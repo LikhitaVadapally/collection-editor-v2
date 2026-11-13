@@ -5,7 +5,7 @@ import { useTreeStore } from '../store/tree.store';
 import { useUiStore } from '../store/ui.store';
 import { useSkillCategory } from './useSkillCategory';
 import { useLpCompetency } from './useLpCompetency';
-import { courseSkills, LP_COMPETENCY_FIELD, teachesAny } from '../utils/lpCompetency';
+import { courseSkills, LP_COMPETENCY_FIELD, teachesOnly } from '../utils/lpCompetency';
 import type { IContent } from '../types/content';
 import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum, isAssessmentLevel } from '../utils/lpStructure';
 import { compositeSearch, DEFAULT_SEARCH_FIELDS } from '../api/content';
@@ -51,15 +51,18 @@ export function buildLpLibraryFilters(
     filters['framework'] = [frameworkId];
   }
   if (!activeAssessmentSlot && selectedSkills.length && skillCategoryCode) {
-    filters[skillCategoryCode] = selectedSkills;
+    // Only courses whose skills ALL lie within the selection (Knowlg's subsetOf): a course that
+    // also teaches a skill outside the Level would carry it into the Level unasked.
+    filters[skillCategoryCode] = { subsetOf: selectedSkills };
   }
   return filters;
 }
 
 /**
- * Filters for the "Other courses" search. It drops the skill filter (composite search can't say
- * "skill NOT IN"), but keeps the path's skill framework: a course from another framework can't
- * teach the role at all.
+ * Filters for the "Other courses" search: the path's skill framework's courses not already in
+ * the main list (those teaching something outside the browsed skills). It drops the skill filter
+ * (composite search can't say "NOT subsetOf"), but keeps the skill framework: a course from
+ * another framework can't teach the role at all.
  */
 export function buildOtherCoursesFilters(competencyFrameworkId: string): Record<string, unknown> {
   return { status: ['Live'], primaryCategory: ['Course'], [LP_COMPETENCY_FIELD]: [competencyFrameworkId] };
@@ -293,8 +296,8 @@ export function useLibrary() {
         if (!wantOthers) {
           setOtherContent(NO_ITEMS);
         } else {
-          // Composite search can't express "skill NOT IN", so fetch Courses without the skill
-          // filter and drop the ones that do teach a browsed skill.
+          // Composite search can't express "NOT subsetOf", so fetch the framework's Courses without
+          // the skill filter and drop the ones that belong in the main list (it may be paged).
           const shown = new Set(content.map((c) => c.identifier));
           const others = await compositeSearch({
             filters: buildOtherCoursesFilters(competency.frameworkId),
@@ -306,7 +309,7 @@ export function useLibrary() {
             fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
           });
           setOtherContent(others.content.filter((c) => !shown.has(c.identifier)
-            && !teachesAny(courseSkills(c as unknown as Record<string, unknown>, skillCategory?.code), browseSkills)));
+            && !teachesOnly(courseSkills(c as unknown as Record<string, unknown>, skillCategory?.code), browseSkills)));
         }
       } catch (e) {
         console.error('[useLibrary] load error:', e);
