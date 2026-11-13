@@ -114,7 +114,13 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   const selectedCompetencyFramework = (isCourseRoot || isLpRoot) && storedCompetencyFramework
     && competencyFrameworks.some(f => f.identifier === storedCompetencyFramework)
     ? storedCompetencyFramework : undefined;
-  const { skills: competencySkills } = useCompetencySkills(isCourseRoot ? selectedCompetencyFramework : undefined);
+  const { skills: competencySkills, skillField: competencySkillField } = useCompetencySkills(
+    isCourseRoot ? selectedCompetencyFramework : undefined,
+  );
+  // The field the current skill framework's tags live in, read when the framework is switched
+  // (the old framework's field is the one to clear).
+  const competencySkillFieldRef = useRef(competencySkillField);
+  competencySkillFieldRef.current = competencySkillField;
   const { roles: competencyRoles } = useCompetencyRoles(isLpRoot ? selectedCompetencyFramework : undefined);
   const roleOptions = React.useMemo(
     () => competencyRoles.map(r => ({ label: r.name, value: r.id })),
@@ -135,6 +141,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
     ...(isCourseRoot || isLpRoot ? {
       competency: {
         frameworks: competencyOptions, frameworksLoaded: competencyFrameworksLoaded, skills: competencySkills,
+        skillField: competencySkillField,
         ...(isLpRoot ? { roles: roleOptions } : {}),
       },
     } : {}),
@@ -362,11 +369,22 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
         // LP: a new skill framework invalidates the target role (a role belongs to one
         // framework) and every Level's selected skills.
         let clearRole = false;
+        // Skills are codes of the skill framework being left behind — meaningless
+        // under another one, so clear them with the switch.
+        let clearedSkillField: string | undefined;
         if (changedField === 'competencyFramework' && isRoot && isLearningPath
           && value !== storedCompetencyFrameworkRef.current) {
           clearRole = !!form.getValues('targetRole');
           if (clearRole) form.setValue('targetRole', '', { shouldDirty: true });
-          const cleared = useTreeStore.getState().clearLevelSkills(skillCategoryCodeRef.current);
+          // The path's own "Skills covered" lives under the old framework's skill field; the new
+          // framework may use another field, so it would otherwise stay behind, stale.
+          const oldField = skillCategoryCodeRef.current;
+          const rootNow = useTreeStore.getState().treeData[0];
+          const rootSkills = oldField && rootNow
+            ? (useTreeStore.getState().treeCache[rootNow.id]?.[oldField] ?? rootNow.metadata?.[oldField])
+            : undefined;
+          if (oldField && (Array.isArray(rootSkills) ? rootSkills.length > 0 : !!rootSkills)) clearedSkillField = oldField;
+          const cleared = useTreeStore.getState().clearLevelSkills(oldField);
           if (clearRole || cleared > 0) {
             toast(
               lbl.learningPath.skillFrameworkChangedToast.replace('{count}', String(cleared)),
@@ -379,7 +397,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
         if (changedField === 'targetRole' && isRoot && isLearningPath && typeof value === 'string' && value
           && value !== storedTargetRoleRef.current) {
           const role = competencyRolesRef.current.find(r => r.id === value);
-          const flagged = role ? coursesNotTeaching(useTreeStore.getState().treeData[0], role.skills).length : 0;
+          const flagged = role ? coursesNotTeaching(useTreeStore.getState().treeData[0], role.skills, skillCategoryCodeRef.current).length : 0;
           if (flagged > 0) {
             toast(
               lbl.learningPath.roleChangedCoursesFlaggedToast.replace('{count}', String(flagged)),
@@ -387,21 +405,23 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
             );
           }
         }
-        // Skills are codes of the skill framework being left behind — meaningless
-        // under another one, so clear them with the switch.
-        let clearSkills = false;
         if (changedField === 'competencyFramework' && isRoot && !isLearningPath && value !== storedCompetencyFrameworkRef.current) {
-          const skills = form.getValues('skill');
-          if (Array.isArray(skills) ? skills.length > 0 : !!skills) {
-            clearSkills = true;
-            form.setValue('skill', [], { shouldDirty: true });
+          const oldField = competencySkillFieldRef.current;
+          const skills = oldField ? form.getValues(oldField) : undefined;
+          if (oldField && (Array.isArray(skills) ? skills.length > 0 : !!skills)) {
+            clearedSkillField = oldField;
+            form.setValue(oldField, [], { shouldDirty: true });
           }
         }
         // transformFieldPatch omits UI-only keys (allowECM/setPeriod → null) and
         // maps levels→outcomeDeclaration, instances→{label}.
         const fieldPatch = transformFieldPatch(changedField, value);
-        const patch = fieldPatch && (clearSkills || clearRole)
-          ? { ...fieldPatch, ...(clearSkills ? { skill: [] } : {}), ...(clearRole ? { targetRole: '' } : {}) }
+        const patch = fieldPatch && (clearedSkillField || clearRole)
+          ? {
+            ...fieldPatch,
+            ...(clearedSkillField ? { [clearedSkillField]: [] } : {}),
+            ...(clearRole ? { targetRole: '' } : {}),
+          }
           : fieldPatch;
         if (patch) {
           updateNode(nodeId, patch, undefined, seedingRef.current ? { silent: true } : undefined);

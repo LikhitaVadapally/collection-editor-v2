@@ -62,12 +62,12 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
   const labelOf = useCallback((s: string) => skillLabel(s, skillTerms), [skillTerms]);
   const outOfScopeSkills = source !== 'manual' ? selectedSkills.filter(s => !scope.includes(s)) : [];
   const { roleSkills } = useLpCompetency();
-  const notTaughtRoleSkills = isLpRoot ? roleSkillsNotTaught(treeData[0], roleSkills) : [];
+  const notTaughtRoleSkills = isLpRoot ? roleSkillsNotTaught(treeData[0], roleSkills, skillCategory?.code) : [];
   // Prior Assessment linked but not testing every role skill (the role decides the path's skills).
   const priorCourse = isLpRoot && isAssessmentLevel(treeData[0]?.children?.[0])
     ? treeData[0]?.children?.[0]?.children?.[0] : undefined;
   const priorMissingRoleSkills = priorCourse && roleSkills.length
-    ? roleSkills.filter(s => !courseSkills(priorCourse).includes(s)) : [];
+    ? roleSkills.filter(s => !courseSkills(priorCourse, skillCategory?.code).includes(s)) : [];
   const skillsCovered = isLpRoot ? computeSkillsCovered(treeData[0], skillCategory?.code, skillTerms) : [];
   // Selected but no linked course under THIS Level actually carries the tag —
   // independent of (and can overlap with) out-of-scope: a skill can be both.
@@ -217,7 +217,7 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
                       item={course}
                       onRemove={handleRemoveCourse}
                       isEditable={isEditable}
-                      notTeachingRole={roleSkills.length > 0 && !teachesAny(courseSkills(course), roleSkills)}
+                      notTeachingRole={roleSkills.length > 0 && !teachesAny(courseSkills(course, skillCategory?.code), roleSkills)}
                     />
                   ))}
                 </div>

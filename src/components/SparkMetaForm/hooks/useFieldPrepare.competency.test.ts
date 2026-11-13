@@ -61,6 +61,16 @@ describe('adaptCompetencyFields', () => {
     expect(find(fields, 'skill')?.options).toContainEqual({ label: 'retired-skill', value: 'retired-skill' });
   });
 
+  it('writes the skills to the framework\'s own field (its last category code), not always `skill`', () => {
+    const culinary: ICompetencyTagging = { ...competency, skills: [{ code: 'FR2', name: 'French' }], skillField: 'cuisine' };
+    const fields = adaptCompetencyFields([name, usfSkill], culinary, { competencyFramework: 'fw_culinary', cuisine: ['FR2'] }, {});
+    expect(find(fields, 'cuisine')).toMatchObject({
+      label: 'Skills', inputType: 'multiselect', sourceCategory: 'cuisine', isSkillField: true, currentValue: ['FR2'],
+    });
+    // The curriculum `skill` field is a different field here, so it stays.
+    expect(find(fields, 'skill')).toBe(usfSkill);
+  });
+
   it('adds nothing when the channel has no competency frameworks', () => {
     const none = { ...competency, frameworks: [] };
     expect(adaptCompetencyFields([name, usfSkill], none, {}, {})).toEqual([name, usfSkill]);

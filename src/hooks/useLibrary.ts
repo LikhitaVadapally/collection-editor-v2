@@ -306,7 +306,7 @@ export function useLibrary() {
             fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
           });
           setOtherContent(others.content.filter((c) => !shown.has(c.identifier)
-            && !teachesAny(courseSkills(c as unknown as Record<string, unknown>), browseSkills)));
+            && !teachesAny(courseSkills(c as unknown as Record<string, unknown>, skillCategory?.code), browseSkills)));
         }
       } catch (e) {
         console.error('[useLibrary] load error:', e);

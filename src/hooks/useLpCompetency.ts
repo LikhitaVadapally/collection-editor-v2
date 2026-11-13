@@ -11,6 +11,8 @@ export interface ILpCompetency {
   frameworkId: string | undefined;
   /** Its leaf skills as framework terms (code + name). */
   terms: ITerm[];
+  /** The content field skill tags live in for this framework (its last category code). */
+  skillField: string | undefined;
   roles: ICompetencyRole[];
   /** The chosen target role, once roles have loaded. */
   role: ICompetencyRole | undefined;
@@ -29,7 +31,7 @@ export function useLpCompetency(): ILpCompetency {
   const stored = isLearningPath ? getLpCompetencyFramework(root, treeCache) : undefined;
   const roleId = isLearningPath ? getLpTargetRole(root, treeCache) : undefined;
 
-  const { skills, isLoaded } = useCompetencySkills(stored);
+  const { skills, skillField: loadedSkillField, isLoaded } = useCompetencySkills(stored);
   const frameworkId = stored && isLoaded && skills.length > 0 ? stored : undefined;
   const { roles } = useCompetencyRoles(frameworkId);
 
@@ -38,6 +40,7 @@ export function useLpCompetency(): ILpCompetency {
     [frameworkId, skills],
   );
   const role = roleId ? roles.find((r) => r.id === roleId) : undefined;
+  const skillField = frameworkId ? loadedSkillField : undefined;
 
-  return { frameworkId, terms, roles, role, roleId, roleSkills: role?.skills ?? NONE };
+  return { frameworkId, terms, skillField, roles, role, roleId, roleSkills: role?.skills ?? NONE };
 }

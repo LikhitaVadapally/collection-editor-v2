@@ -31,6 +31,14 @@ describe('lpCompetency', () => {
     expect(courseSkills({})).toEqual([]);
   });
 
+  it('reads course skills from the skill framework\'s own field when it is not `skill`', () => {
+    const fr = { id: 'f', isFolder: false, metadata: { cuisine: ['FR2'], skill: ['other'] }, children: [] } as unknown as INode;
+    expect(courseSkills(fr, 'cuisine')).toEqual(['FR2']);
+    const lp = { id: 'r', isFolder: true, metadata: {}, children: [level('l', [fr])] } as unknown as INode;
+    expect(coursesNotTeaching(lp, ['FR2'], 'cuisine')).toEqual([]);
+    expect(roleSkillsNotTaught(lp, ['FR2', 'IT1'], 'cuisine')).toEqual(['IT1']);
+  });
+
   it('teachesAny is true when no skills are wanted', () => {
     expect(teachesAny([], [])).toBe(true);
     expect(teachesAny(['a'], ['b'])).toBe(false);

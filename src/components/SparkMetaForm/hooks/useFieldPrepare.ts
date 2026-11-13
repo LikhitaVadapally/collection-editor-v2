@@ -272,17 +272,21 @@ function adaptToFramework(
 }
 
 const COMPETENCY_FIELD = 'competencyFramework';
+// Until the skill framework loads its field is unknown; `skill` is the common case.
 const SKILL_FIELD = 'skill';
 const SKILLS_SECTION = 'Skills';
 
 /**
  * Course skill tagging against a competency framework. lern credits a course's skills from two
- * fields: `competencyFramework` (the CompetencyFramework id) and `skill` (its leaf codes). Neither
- * is the curriculum `framework` (Course Type), so the author picks the skill framework separately.
+ * fields: `competencyFramework` (the CompetencyFramework id) and the framework's skill field — its
+ * last category code (`competency.skillField`: `skill`, `cuisine`, ...), holding the skill codes.
+ * Neither is the curriculum `framework` (Course Type), so the author picks the skill framework
+ * separately.
  *
  * - Adds a "Skill framework" select when the channel has any competency framework.
- * - Once one is picked, `skill` becomes a multiselect of that framework's leaf skills, replacing
- *   any curriculum-framework skill field (e.g. USF's), since both would write the same `skill`.
+ * - Once one is picked, its skill field becomes a multiselect of that framework's skills,
+ *   replacing any curriculum-framework field of the same code (e.g. USF's `skill`), since both
+ *   would write the same field.
  * - A stored value that isn't one of the channel's competency frameworks (old courses default to
  *   `NCF`) shows as unselected, and nothing is written until the author picks one.
  * With no skill framework picked, the curriculum framework's skill field behaves as before.
@@ -307,18 +311,19 @@ export function adaptCompetencyFields(
     currentValue: selected || undefined,
   };
 
-  const rest = fields.filter(f => f.code !== COMPETENCY_FIELD && (!selected || f.code !== SKILL_FIELD));
+  const skillCode = competency.skillField ?? SKILL_FIELD;
+  const rest = fields.filter(f => f.code !== COMPETENCY_FIELD && (!selected || f.code !== skillCode));
   if (!selected) return [...rest, frameworkField];
 
   const terms: ITerm[] = competency.skills.map(sk => ({ identifier: sk.code, code: sk.code, name: sk.name }));
-  const skillValue = toSkillCodes(meta[SKILL_FIELD], terms);
+  const skillValue = toSkillCodes(meta[skillCode], terms);
   const skillField: PreparedField = {
-    code: SKILL_FIELD, label: 'Skills', inputType: 'multiselect',
-    editable: computeEditable(SKILL_FIELD, true, ctx), tab: 'details', section: SKILLS_SECTION,
+    code: skillCode, label: 'Skills', inputType: 'multiselect',
+    editable: computeEditable(skillCode, true, ctx), tab: 'details', section: SKILLS_SECTION,
     placeholder: 'Select skills',
     // Keep a stored code the framework no longer has visible, so it isn't dropped silently.
     options: withStoredCodes(competency.skills.map(sk => ({ label: sk.name, value: sk.code })), skillValue),
-    sourceCategory: SKILL_FIELD,
+    sourceCategory: skillCode,
     isSkillField: true,
     currentValue: skillValue,
   };

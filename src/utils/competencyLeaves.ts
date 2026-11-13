@@ -1,15 +1,14 @@
 /**
- * Leaf skills of a `CompetencyFramework` (Knowlg `/competency-framework/v3/read`), worked out the
- * way lern-service does it (`CompetencyFrameworkUtil.parseTree`), so a course is only ever tagged
- * with skills lern can credit. Mirrors the portal's `skillLeaves.frameworkLeaves`.
+ * Skills of a `CompetencyFramework` (Knowlg `/competency-framework/v3/read`), worked out the way
+ * lern-service does it (`CompetencyFrameworkUtil.parseTree` / `parseSkillField`), so a course is
+ * only ever tagged with skills lern can credit, under the field lern reads them from.
  *
- * The walk starts at the `competency` category and accepts all three authoring shapes:
- *   1. `children`     - tiers nested inside the `competency` category;
- *   2. `associations` - tiers in separate categories (competencyarea -> competency -> skill). Only
- *                       associations that LEAVE the term's own category are followed, each looked
- *                       up by identifier, because association entries are shallow;
- *   3. `parentCode`   - a flat list: a code nobody names as its parent is a leaf.
- * Interior terms are navigation only; they are never offered as skills.
+ * The skill category is the framework's LAST category by `index` (falling back to its position in
+ * the response), whatever the adopter names it. Its code is the content field skill tags are
+ * stored in (`skill` for one framework, `cuisine` for another), and its terms are the skills.
+ * Inside it, terms may still nest by `children` or name a `parentCode`/`parents` in the same
+ * category; then only a term nobody descends from is a skill. Categories above it are navigation
+ * only and never offered.
  */
 
 export interface CompetencyTermWire {
@@ -35,66 +34,44 @@ export interface CompetencySkill {
   name: string;
 }
 
-const ROOT_CATEGORY = 'competency';
-
-function descendantsOf(categories: CompetencyCategoryWire[]) {
-  const index = new Map<string, CompetencyTermWire>();
-  categories.forEach((c) => (c.terms ?? []).forEach((t) => t.identifier && index.set(t.identifier, t)));
-  const resolve = (t: CompetencyTermWire) => (t.identifier && index.get(t.identifier)) || t;
-  return (t: CompetencyTermWire, seen: Set<string>): CompetencyTermWire[] => {
-    if (t.children?.length) return t.children.map(resolve);
-    const own = t.category ?? '';
-    return (t.associations ?? []).flatMap((a) => {
-      if (!a.category || a.category === own || !a.identifier || seen.has(a.identifier)) return [];
-      const target = index.get(a.identifier);
-      return target ? [target] : [];
-    });
-  };
+/** The skill category: the last one by `index`, position breaking the tie for a missing index. */
+function skillCategory(categories: CompetencyCategoryWire[] | undefined): CompetencyCategoryWire | undefined {
+  const ordered = (categories ?? [])
+    .map((c, pos) => ({ c, key: typeof c.index === 'number' ? c.index : pos }))
+    .sort((a, b) => a.key - b.key);
+  return ordered[ordered.length - 1]?.c;
 }
 
-/** Leaf skill codes, sorted. Empty when the framework has no `competency` category. */
+/** The content field a course's skill tags live in: the skill category's code. */
+export function competencySkillField(categories: CompetencyCategoryWire[] | undefined): string | undefined {
+  return skillCategory(categories)?.code || undefined;
+}
+
+function flatten(terms: CompetencyTermWire[]): CompetencyTermWire[] {
+  return terms.flatMap((t) => [t, ...flatten(t.children ?? [])]);
+}
+
+/** Skill codes, sorted. Empty when the framework has no categories or its last one has no terms. */
 export function competencyLeafCodes(categories: CompetencyCategoryWire[] | undefined): string[] {
-  const cats = categories ?? [];
-  const roots = cats.find((c) => c.code === ROOT_CATEGORY)?.terms ?? [];
-  if (roots.length === 0) return [];
-  const descendants = descendantsOf(cats);
-
-  const leaves = new Set<string>();
-  let maxTier = 0;
-  const walk = (t: CompetencyTermWire, tier: number, seen: Set<string>) => {
-    if (t.identifier && seen.has(t.identifier)) return;
-    const nextSeen = t.identifier ? new Set(seen).add(t.identifier) : seen;
-    const next = descendants(t, nextSeen);
-    if (next.length === 0) {
-      if (t.code) leaves.add(t.code);
-      maxTier = Math.max(maxTier, tier);
-    } else next.forEach((n) => walk(n, tier + 1, nextSeen));
-  };
-  roots.forEach((r) => walk(r, 1, new Set()));
-  if (maxTier > 1) return [...leaves].sort();
-
-  // Flat shape: anything that is nobody's parent is a leaf.
-  const parentOf = new Map<string, string>();
-  roots.forEach((t) => {
-    const parent = t.parentCode ?? t.parents?.find((p) => p.code)?.code;
-    if (t.code && parent) parentOf.set(t.code, parent);
-  });
-  if (parentOf.size === 0) return [...leaves].sort();
-  const parents = new Set(parentOf.values());
-  return roots
-    .map((t) => t.code)
-    .filter((c): c is string => Boolean(c) && !parents.has(c as string))
-    .sort();
+  const all = flatten(skillCategory(categories)?.terms ?? []);
+  const codes = new Set(all.map((t) => t.code).filter((c): c is string => Boolean(c)));
+  const parents = new Set(
+    all
+      .map((t) => t.parentCode ?? t.parents?.find((p) => p.code)?.code)
+      .filter((p): p is string => Boolean(p) && codes.has(p as string)),
+  );
+  const leaves = all
+    .filter((t) => t.code && !(t.children?.length) && !parents.has(t.code))
+    .map((t) => t.code as string);
+  return [...new Set(leaves)].sort();
 }
 
-/** Leaf skills with their authored names, sorted by name. */
+/** Skills with their authored names, sorted by name. */
 export function competencyLeafSkills(categories: CompetencyCategoryWire[] | undefined): CompetencySkill[] {
   const names = new Map<string, string>();
-  const record = (t: CompetencyTermWire) => {
+  flatten(skillCategory(categories)?.terms ?? []).forEach((t) => {
     if (t.code && t.name && !names.has(t.code)) names.set(t.code, t.name);
-    (t.children ?? []).forEach(record);
-  };
-  (categories ?? []).forEach((c) => (c.terms ?? []).forEach(record));
+  });
   return competencyLeafCodes(categories)
     .map((code) => ({ code, name: names.get(code) ?? code }))
     .sort((a, b) => a.name.localeCompare(b.name));

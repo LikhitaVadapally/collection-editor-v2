@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getCompetencyFramework, listCompetencyFrameworks, listCompetencyRoles } from '../api/competencyFramework';
 import type { ICompetencyFrameworkSummary, ICompetencyRole } from '../api/competencyFramework';
-import { competencyLeafSkills, type CompetencySkill } from '../utils/competencyLeaves';
+import { competencyLeafSkills, competencySkillField, type CompetencySkill } from '../utils/competencyLeaves';
 
 const NO_FRAMEWORKS: ICompetencyFrameworkSummary[] = [];
 const NO_SKILLS: CompetencySkill[] = [];
@@ -21,9 +21,13 @@ export function useCompetencyFrameworks(channel: string | undefined, enabled = t
   return { frameworks: query.data ?? NO_FRAMEWORKS, isLoaded: query.isSuccess };
 }
 
-/** Leaf skills of one competency framework — options for the course's Skills field. */
+/**
+ * Skills of one competency framework — options for the course's Skills field — and `skillField`,
+ * the content field they are stored in (the framework's last category code; see competencyLeaves).
+ */
 export function useCompetencySkills(frameworkId: string | undefined): {
   skills: CompetencySkill[];
+  skillField: string | undefined;
   isLoaded: boolean;
 } {
   const query = useQuery({
@@ -31,9 +35,9 @@ export function useCompetencySkills(frameworkId: string | undefined): {
     queryFn: () => getCompetencyFramework(frameworkId!),
     enabled: !!frameworkId,
     staleTime: 5 * 60 * 1000,
-    select: (fw) => competencyLeafSkills(fw?.categories),
+    select: (fw) => ({ skills: competencyLeafSkills(fw?.categories), skillField: competencySkillField(fw?.categories) }),
   });
-  return { skills: query.data ?? NO_SKILLS, isLoaded: query.isSuccess };
+  return { skills: query.data?.skills ?? NO_SKILLS, skillField: query.data?.skillField, isLoaded: query.isSuccess };
 }
 
 /** Live roles of one competency framework, each with its required skill codes. */

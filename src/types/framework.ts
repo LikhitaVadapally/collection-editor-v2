@@ -51,6 +51,11 @@ export interface ICompetencyTagging {
   frameworksLoaded: boolean;
   /** Leaf skills of the selected competency framework. */
   skills: Array<{ code: string; name: string }>;
+  /**
+   * The content field those skills are stored in: the framework's last category code (`skill`,
+   * `cuisine`, ...), which is the field lern reads. Unset until the framework loads.
+   */
+  skillField?: string;
   /** Learning Path only: live roles of the selected competency framework. */
   roles?: Array<{ label: string; value: string }>;
 }

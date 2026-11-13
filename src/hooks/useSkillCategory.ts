@@ -58,13 +58,13 @@ export function useSkillCategory(): ISkillCategory | null {
   const frameworkId = resolvePriorCourseFramework(treeData[0])
     ?? (contentFramework ?? config?.context?.framework) as string | undefined;
   const { organisationFramework } = useFramework(frameworkId);
-  // An LP scoped by a competency framework tags with its leaf skills under `skill` (the field lern
-  // credits), not the curriculum framework's skill category.
+  // An LP scoped by a competency framework tags with its skills under that framework's skill field
+  // (its last category code — what lern reads), not the curriculum framework's skill category.
   const lp = useLpCompetency();
   const curriculumSkills = resolveSkillCategory(organisationFramework?.categories);
   return useMemo(
-    () => (lp.frameworkId ? { code: SKILL_FIELD, terms: lp.terms } : curriculumSkills),
+    () => (lp.frameworkId ? { code: lp.skillField ?? SKILL_FIELD, terms: lp.terms } : curriculumSkills),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lp.frameworkId, lp.terms, curriculumSkills?.code, curriculumSkills?.terms],
+    [lp.frameworkId, lp.skillField, lp.terms, curriculumSkills?.code, curriculumSkills?.terms],
   );
 }

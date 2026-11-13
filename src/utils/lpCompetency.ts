@@ -8,7 +8,11 @@ import { isAssessmentLevel } from './lpStructure';
  */
 export const LP_COMPETENCY_FIELD = 'competencyFramework';
 export const LP_TARGET_ROLE_FIELD = 'targetRole';
-/** The content field lern credits skills from (leaf codes). */
+/**
+ * Fallback skill field, for when the skill framework hasn't loaded yet. The real field is the
+ * framework's last category code (competencySkillField) — `skill` for some frameworks, `cuisine`
+ * for another — which is the field lern credits skills from.
+ */
 export const SKILL_FIELD = 'skill';
 
 function rootValue(
@@ -36,10 +40,13 @@ export function getLpTargetRole(
   return rootValue(root, treeCache, LP_TARGET_ROLE_FIELD);
 }
 
-/** A course's skill tags (codes), from its own metadata. */
-export function courseSkills(course: Pick<INode, 'metadata'> | Record<string, unknown> | undefined): string[] {
+/** A course's skill tags (codes), from its own metadata, under the skill framework's field. */
+export function courseSkills(
+  course: Pick<INode, 'metadata'> | Record<string, unknown> | undefined,
+  skillField: string = SKILL_FIELD,
+): string[] {
   const meta = (course && 'metadata' in course ? course.metadata : course) as Record<string, unknown> | undefined;
-  const raw = meta?.[SKILL_FIELD];
+  const raw = meta?.[skillField];
   return Array.isArray(raw) ? raw.map(String) : raw ? [String(raw)] : [];
 }
 
@@ -54,24 +61,24 @@ export function teachesAny(skills: string[], wanted: string[]): boolean {
  * flagged after the target role changes (they are kept, never removed silently). Assessment-slot
  * and Level Exam courses are excluded: they test skills, they aren't picked to teach them.
  */
-export function coursesNotTeaching(root: INode | undefined, skills: string[]): INode[] {
+export function coursesNotTeaching(root: INode | undefined, skills: string[], skillField?: string): INode[] {
   if (!root || !skills.length) return [];
   return (root.children ?? [])
     .filter((level) => !isAssessmentLevel(level))
     .flatMap((level) => level.children ?? [])
     .filter((course) => !course.metadata?.['isAssessmentCourse'])
-    .filter((course) => !teachesAny(courseSkills(course), skills));
+    .filter((course) => !teachesAny(courseSkills(course, skillField), skills));
 }
 
 /** Role skills no linked regular course teaches yet (the coverage hint). */
-export function roleSkillsNotTaught(root: INode | undefined, roleSkills: string[]): string[] {
+export function roleSkillsNotTaught(root: INode | undefined, roleSkills: string[], skillField?: string): string[] {
   if (!root || !roleSkills.length) return [];
   const taught = new Set(
     (root.children ?? [])
       .filter((level) => !isAssessmentLevel(level))
       .flatMap((level) => level.children ?? [])
       .filter((course) => !course.metadata?.['isAssessmentCourse'])
-      .flatMap((course) => courseSkills(course)),
+      .flatMap((course) => courseSkills(course, skillField)),
   );
   return roleSkills.filter((s) => !taught.has(s));
 }
