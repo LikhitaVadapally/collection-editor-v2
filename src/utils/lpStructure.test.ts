@@ -16,7 +16,7 @@ import {
   getExplicitCurriculum,
   computeSkillsCovered,
   resolveSkillsCoveredForSync,
-  computeUncoveredSkills,
+  computeLevelSkills,
   findLevelsWithOutOfScopeSkills,
   computePathShape,
   validateLearningPathStructure,
@@ -399,8 +399,8 @@ describe('computeSkillsCovered', () => {
       id: 'root',
       children: [
         level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['Python programming'])] }),
-        level({ id: 'lvl1', metadata: { skill: ['Java'] }, children: [course('c1')] }),
-        level({ id: 'lvl2', metadata: { skill: ['Java', 'SQL'] }, children: [course('c2')] }),
+        level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java'] } })] }),
+        level({ id: 'lvl2', children: [course('c2', { metadata: { skill: ['Java', 'SQL'] } })] }),
         level({ id: 'post', children: [assessmentCourseWithSkills('a2', ['SQL', 'Testing'])] }),
       ],
     });
@@ -409,14 +409,15 @@ describe('computeSkillsCovered', () => {
     );
   });
 
-  it('never pulls skills from a content Level\'s linked courses, only its own resolved skill-category field', () => {
+  // A Level's skills are worked out from its courses, so a stale stored pick never counts.
+  it('reads a content Level\'s skills from its courses, not from a stored pick', () => {
     const root = level({
       id: 'root',
       children: [
-        level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Should not leak'] } })] }),
+        level({ id: 'lvl1', metadata: { skill: ['Stale pick'] }, children: [course('c1', { metadata: { skill: ['Java'] } })] }),
       ],
     });
-    expect(computeSkillsCovered(root, 'skill')).toEqual([]);
+    expect(computeSkillsCovered(root, 'skill')).toEqual(['Java']);
   });
 
   it('returns an empty array without a root node or a resolved skill category', () => {
@@ -424,28 +425,34 @@ describe('computeSkillsCovered', () => {
     expect(computeSkillsCovered(level({ children: [] }), undefined)).toEqual([]);
   });
 
-  it('reads a middle Level\'s OWN selected skills, not its Level-assessment course\'s tags, even though the shape matches a pre/post slot', () => {
+  it('never takes a middle Level\'s Level-assessment course tags, even though the shape matches a pre/post slot', () => {
     const root = level({
       id: 'root',
       children: [
         level({ id: 'l1' }),
-        level({
-          id: 'l2', metadata: { skill: ['Java'] },
-          children: [assessmentCourseWithSkills('a1', ['Should not leak'])],
-        }),
+        level({ id: 'l2', metadata: { skill: ['Java'] }, children: [assessmentCourseWithSkills('a1', ['Should not leak'])] }),
         level({ id: 'l3' }),
       ],
     });
-    expect(computeSkillsCovered(root, 'skill')).toEqual(['Java']);
+    expect(computeSkillsCovered(root, 'skill')).toEqual([]);
   });
 });
 
 describe('resolveSkillsCoveredForSync', () => {
+  it('with a target role, makes the path skills the role skills', () => {
+    const root = level({
+      id: 'root', metadata: { skill: ['Java'] },
+      children: [level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java'] } })] })],
+    });
+    expect(resolveSkillsCoveredForSync(root, 'skill', {}, [], ['Java', 'SQL'])).toEqual(['Java', 'SQL']);
+    expect(resolveSkillsCoveredForSync(level({ ...root, metadata: { skill: ['SQL', 'Java'] } }), 'skill', {}, [], ['Java', 'SQL'])).toBeNull();
+  });
+
   it("returns the covered union when it differs from root's stored value — a Level's newly-added skill should attach to the path's own metadata too", () => {
     const root = level({
       id: 'root', metadata: { skill: ['Java'] }, // stale — lvl1 now also selects Python
       children: [
-        level({ id: 'lvl1', metadata: { skill: ['Java', 'Python programming'] }, children: [course('c1')] }),
+        level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java', 'Python programming'] } })] }),
       ],
     });
     expect(resolveSkillsCoveredForSync(root, 'skill', {})?.sort()).toEqual(['Java', 'Python programming']);
@@ -455,8 +462,8 @@ describe('resolveSkillsCoveredForSync', () => {
     const root = level({
       id: 'root', metadata: { skill: ['Python programming', 'Java'] }, // different order, same set
       children: [
-        level({ id: 'lvl1', metadata: { skill: ['Java'] }, children: [course('c1')] }),
-        level({ id: 'lvl2', metadata: { skill: ['Python programming'] }, children: [course('c2')] }),
+        level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java'] } })] }),
+        level({ id: 'lvl2', children: [course('c2', { metadata: { skill: ['Python programming'] } })] }),
       ],
     });
     expect(resolveSkillsCoveredForSync(root, 'skill', {})).toBeNull();
@@ -465,7 +472,7 @@ describe('resolveSkillsCoveredForSync', () => {
   it('prefers treeCache over root.metadata for the stored-value comparison, matching every other field read this way', () => {
     const root = level({
       id: 'root', metadata: { skill: ['Java'] }, // stale metadata — treeCache has the live edit
-      children: [level({ id: 'lvl1', metadata: { skill: ['Java'] }, children: [course('c1')] })],
+      children: [level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java'] } })] })],
     });
     const treeCache = { root: { skill: ['Java'] } }; // matches the covered union
     expect(resolveSkillsCoveredForSync(root, 'skill', treeCache)).toBeNull();
@@ -477,57 +484,25 @@ describe('resolveSkillsCoveredForSync', () => {
   });
 });
 
-describe('computeUncoveredSkills', () => {
-  it('flags a selected skill with zero linked course tagged for it', () => {
+describe('computeLevelSkills', () => {
+  // A Level's skills come from its regular courses; the Level Exam course doesn't add any.
+  it('is the union of its regular courses\' skills, ignoring the Level Exam and any stored picks', () => {
     const lvl = level({
-      id: 'lvl1', metadata: { skill: ['Python programming', 'Java'] },
-      children: [course('c1', { metadata: { skill: ['Python programming'] } })],
-    });
-    expect(computeUncoveredSkills(lvl, ['Python programming', 'Java'], 'skill')).toEqual(['Java']);
-  });
-
-  it('returns nothing once every selected skill has at least one covering course', () => {
-    const lvl = level({
-      id: 'lvl1', metadata: { skill: ['Python programming', 'Java'] },
+      id: 'lvl1', metadata: { skill: ['Stale pick'] },
       children: [
-        course('c1', { metadata: { skill: ['Python programming'] } }),
-        course('c2', { metadata: { skill: ['Java'] } }),
+        course('c1', { metadata: { skill: ['Java', 'SQL'] } }),
+        course('c2', { metadata: { skill: ['SQL', 'Docker'] } }),
+        assessmentCourseWithSkills('exam', ['Kotlin']),
       ],
     });
-    expect(computeUncoveredSkills(lvl, ['Python programming', 'Java'], 'skill')).toEqual([]);
+    expect(computeLevelSkills(lvl, 'skill').sort()).toEqual(['Docker', 'Java', 'SQL']);
   });
 
-  it("doesn't let redundant coverage of one skill mask another selected skill having none — a Level 'looks' populated with 2 courses while Java has zero coverage", () => {
-    const lvl = level({
-      id: 'lvl1', metadata: { skill: ['Python programming', 'Java'] },
-      children: [
-        course('c1', { metadata: { skill: ['Python programming'] } }),
-        course('c2', { metadata: { skill: ['Python programming'] } }), // redundant with c1
-      ],
-    });
-    expect(computeUncoveredSkills(lvl, ['Python programming', 'Java'], 'skill')).toEqual(['Java']);
-  });
-
-  it('unions coverage across multiple courses under the same Level', () => {
-    const lvl = level({
-      id: 'lvl1', metadata: { skill: ['Python programming', 'Java', 'SQL'] },
-      children: [
-        course('c1', { metadata: { skill: ['Python programming'] } }),
-        course('c2', { metadata: { skill: ['Java', 'SQL'] } }),
-      ],
-    });
-    expect(computeUncoveredSkills(lvl, ['Python programming', 'Java', 'SQL'], 'skill')).toEqual([]);
-  });
-
-  it('flags every selected skill when the Level has no courses at all', () => {
-    const lvl = level({ id: 'lvl1', metadata: { skill: ['Python programming'] }, children: [] });
-    expect(computeUncoveredSkills(lvl, ['Python programming'], 'skill')).toEqual(['Python programming']);
-  });
-
-  it('returns an empty array with no level, no skill category, or no selected skills', () => {
-    expect(computeUncoveredSkills(undefined, ['Java'], 'skill')).toEqual([]);
-    expect(computeUncoveredSkills(level({ children: [] }), ['Java'], undefined)).toEqual([]);
-    expect(computeUncoveredSkills(level({ children: [] }), [], 'skill')).toEqual([]);
+  it('reads the skill framework\'s own field and is empty without courses', () => {
+    const lvl = level({ children: [course('c1', { metadata: { cuisine: ['cuisine-french'], skill: ['x'] } })] });
+    expect(computeLevelSkills(lvl, 'cuisine')).toEqual(['cuisine-french']);
+    expect(computeLevelSkills(level({ children: [] }), 'skill')).toEqual([]);
+    expect(computeLevelSkills(undefined, 'skill')).toEqual([]);
   });
 });
 
@@ -536,8 +511,8 @@ describe('findLevelsWithOutOfScopeSkills', () => {
     const root = level({
       id: 'root',
       children: [
-        level({ id: 'lvl1', metadata: { skill: ['Java'] }, children: [course('c1')] }),
-        level({ id: 'lvl2', metadata: { skill: ['Python programming'] }, children: [course('c2')] }),
+        level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java'] } })] }),
+        level({ id: 'lvl2', children: [course('c2', { metadata: { skill: ['Python programming'] } })] }),
       ],
     });
     const affected = findLevelsWithOutOfScopeSkills(root, 'skill', ['Java']);
@@ -549,7 +524,7 @@ describe('findLevelsWithOutOfScopeSkills', () => {
       id: 'root',
       children: [
         level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['Python programming'])] }),
-        level({ id: 'lvl1', metadata: { skill: ['Java'] }, children: [course('c1')] }),
+        level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java'] } })] }),
       ],
     });
     // 'Python programming' (the pre-slot's own course tag) is irrelevant here —
@@ -618,6 +593,34 @@ function validPath(policy = 'strict') {
 describe('validateLearningPathStructure', () => {
   it('is clean for a fully-valid strict-policy path', () => {
     expect(validateLearningPathStructure(validPath(), 'skill', [])).toEqual([]);
+  });
+
+  // With a target role the path must teach every role skill, and nothing outside the role.
+  describe('with a target role', () => {
+    const roleIssues = (root: INode, role: string[]) =>
+      validateLearningPathStructure(root, 'skill', [], {}, [], role).filter(i => i.code.startsWith('role') || i.code === 'courseOutsideRole');
+
+    it('passes when the courses teach exactly the role', () => {
+      expect(roleIssues(validPath(), ['Java'])).toEqual([]);
+    });
+
+    it('blocks while a role skill is taught by no course, naming it', () => {
+      const issues = roleIssues(validPath(), ['Java', 'Docker']);
+      expect(issues).toEqual([expect.objectContaining({ code: 'roleSkillsNotTaught' })]);
+      expect(issues[0]!.message).toContain('Docker');
+    });
+
+    it('blocks a course that teaches skills outside the role, naming them', () => {
+      const root = validPath();
+      root.children![1]!.children!.push(course('c2', { name: 'Extra', metadata: { skill: ['Java', 'Kotlin'] } }));
+      const issues = roleIssues(root, ['Java']);
+      expect(issues).toEqual([expect.objectContaining({ code: 'courseOutsideRole', nodeId: 'c2' })]);
+      expect(issues[0]!.message).toContain('Kotlin');
+    });
+
+    it('applies neither rule without a role', () => {
+      expect(roleIssues(validPath(), [])).toEqual([]);
+    });
   });
 
   it('flags a missing policy', () => {
@@ -708,22 +711,13 @@ describe('validateLearningPathStructure', () => {
     root.children![1].children = [];
     const issues = validateLearningPathStructure(root, 'skill', []);
     expect(issues.map(i => i.code)).toContain('emptyLevel');
-    expect(issues.map(i => i.code)).not.toContain('levelMissingSkills'); // redundant with emptyLevel
   });
 
-  it("also names the selected skill(s) an empty Level still needs a course for — not just 'no courses yet'", () => {
-    const root = validPath();
-    root.children![1].children = []; // lvl1 keeps its metadata.skill: ['Java'] selection
-    const issues = validateLearningPathStructure(root, 'skill', []);
-    expect(issues.map(i => i.code)).toContain('emptyLevel');
-    expect(issues.map(i => i.code)).toContain('levelSkillsUncovered');
-    expect(issues.find(i => i.code === 'levelSkillsUncovered')?.message).toContain('Java');
-  });
-
-  it('flags a content Level with no selected skills', () => {
+  // A Level's skills come from its courses: nothing to pick, so nothing to be missing.
+  it('never asks for skills to be picked on a Level', () => {
     const root = validPath();
     root.children![1].metadata = {};
-    expect(validateLearningPathStructure(root, 'skill', []).map(i => i.code)).toContain('levelMissingSkills');
+    expect(validateLearningPathStructure(root, 'skill', [])).toEqual([]);
   });
 
   it('flags a content Level whose selected skills fall outside the current scope', () => {
@@ -735,31 +729,10 @@ describe('validateLearningPathStructure', () => {
       .not.toContain('levelSkillsOutOfScope');
   });
 
-  it('is clean for a valid path where every selected skill has a covering course', () => {
-    expect(validateLearningPathStructure(validPath(), 'skill', []).map(i => i.code))
-      .not.toContain('levelSkillsUncovered');
-  });
-
-  it('flags a content Level with a selected skill no linked course is tagged with', () => {
-    const root = validPath();
-    root.children![1].metadata = { skill: ['Java', 'Python programming'] }; // course c1 is only tagged 'Java'
-    const issues = validateLearningPathStructure(root, 'skill', []);
-    expect(issues.map(i => i.code)).toContain('levelSkillsUncovered');
-    expect(issues.find(i => i.code === 'levelSkillsUncovered')?.message).toContain('Python programming');
-  });
-
   it('flags a linked course with no skill tag', () => {
     const root = validPath();
     root.children![1].children![0].metadata = {};
     expect(validateLearningPathStructure(root, 'skill', []).map(i => i.code)).toContain('courseMissingSkillTag');
-  });
-
-  it("pairs courseMissingSkillTag with levelSkillsUncovered when that untagged course was the Level's only coverage — the two facts surface together rather than needing one message to explain the other", () => {
-    const root = validPath();
-    root.children![1].children![0].metadata = {}; // c1 loses its 'Java' tag — lvl1's only course
-    const issues = validateLearningPathStructure(root, 'skill', []).map(i => i.code);
-    expect(issues).toContain('courseMissingSkillTag');
-    expect(issues).toContain('levelSkillsUncovered');
   });
 
   it('flags a course that appears more than once in the path', () => {
@@ -810,8 +783,8 @@ describe('skill values stored as term codes or legacy names', () => {
       id: 'root',
       children: [
         level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['Python programming'])] }),
-        level({ id: 'lvl1', metadata: { skill: ['python', 'java'] }, children: [course('c1')] }),
-        level({ id: 'lvl2', metadata: { skill: ['JAVA'] }, children: [course('c2')] }),
+        level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['python', 'java'] } })] }),
+        level({ id: 'lvl2', children: [course('c2', { metadata: { skill: ['JAVA'] } })] }),
       ],
     });
     expect(computeSkillsCovered(root, 'skill', terms).sort()).toEqual(['java', 'python']);
@@ -820,18 +793,10 @@ describe('skill values stored as term codes or legacy names', () => {
   it('resolveSkillsCoveredForSync rewrites a root still holding legacy names as codes, then settles', () => {
     const root = level({
       id: 'root', metadata: { skill: ['Java'] },
-      children: [level({ id: 'lvl1', metadata: { skill: ['Java'] }, children: [course('c1')] })],
+      children: [level({ id: 'lvl1', children: [course('c1', { metadata: { skill: ['Java'] } })] })],
     });
     expect(resolveSkillsCoveredForSync(root, 'skill', {}, terms)).toEqual(['java']);
     expect(resolveSkillsCoveredForSync(root, 'skill', { root: { skill: ['java'] } }, terms)).toBeNull();
-  });
-
-  it('computeUncoveredSkills treats a code-selected skill as covered by a course tagged with its name', () => {
-    const lvl = level({
-      id: 'lvl1',
-      children: [course('c1', { metadata: { skill: ['Python programming'] } }), course('c2', { metadata: { skill: ['sql'] } })],
-    });
-    expect(computeUncoveredSkills(lvl, ['python', 'SQL', 'java'], 'skill', terms)).toEqual(['java']);
   });
 
   it('findLevelsWithOutOfScopeSkills compares legacy-name Level selections against a code scope', () => {
@@ -839,8 +804,8 @@ describe('skill values stored as term codes or legacy names', () => {
       id: 'root',
       children: [
         level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['python'])] }),
-        level({ id: 'in', metadata: { skill: ['Python programming'] }, children: [course('c1')] }),
-        level({ id: 'out', metadata: { skill: ['Java'] }, children: [course('c2')] }),
+        level({ id: 'in', children: [course('c1', { metadata: { skill: ['Python programming'] } })] }),
+        level({ id: 'out', children: [course('c2', { metadata: { skill: ['Java'] } })] }),
       ],
     });
     expect(findLevelsWithOutOfScopeSkills(root, 'skill', ['python'], terms).map(l => l.id)).toEqual(['out']);
@@ -852,14 +817,13 @@ describe('skill values stored as term codes or legacy names', () => {
       children: [
         level({ id: 'pre', children: [assessmentCourseWithSkills('a1', ['Python programming'])] }),
         level({
-          id: 'lvl1', name: 'Level 1', metadata: { skill: ['python', 'java'] },
-          children: [course('c1', { metadata: { skill: ['Python programming'] } })],
+          id: 'lvl1', name: 'Level 1',
+          children: [course('c1', { metadata: { skill: ['Python programming'] } }), course('c2', { metadata: { skill: ['java'] } })],
         }),
       ],
     });
     const issues = validateLearningPathStructure(root, 'skill', ['python'], {}, terms);
     expect(issues.find(i => i.code === 'levelSkillsOutOfScope')?.message).toContain(': Java.');
-    expect(issues.find(i => i.code === 'levelSkillsUncovered')?.message).toContain(': Java.');
     expect(issues.some(i => i.code === 'courseMissingSkillTag')).toBe(false);
   });
 });

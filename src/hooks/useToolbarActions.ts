@@ -12,6 +12,7 @@ import { findMissingRequiredFields } from '../utils/validateRequiredFields';
 import { validateLearningPathStructure } from '../utils/lpStructure';
 import { useFramework } from './useFramework';
 import { useSkillCategory } from './useSkillCategory';
+import { useLpCompetency } from './useLpCompetency';
 import { useSkillScope } from './useSkillScope';
 
 /**
@@ -36,6 +37,7 @@ export function useToolbarActions(save: () => Promise<void>) {
   const selectNode = useTreeStore((s) => s.selectNode);
   const skillCategory = useSkillCategory();
   const { scope: skillScope } = useSkillScope();
+  const { roleSkills } = useLpCompetency();
 
   // Same framework resolution as SparkMetaForm (react-query dedupes the read),
   // so required-field validation sees the same adapted field set the form
@@ -95,11 +97,11 @@ export function useToolbarActions(save: () => Promise<void>) {
    */
   const checkLpStructure = useCallback((): boolean => {
     if (editorProfile.key !== 'learningPath') return true;
-    const issues = validateLearningPathStructure(treeData[0], skillCategory?.code, skillScope, treeCache, skillCategory?.terms);
+    const issues = validateLearningPathStructure(treeData[0], skillCategory?.code, skillScope, treeCache, skillCategory?.terms, roleSkills);
     if (issues.length === 0) return true;
     toast.error(issues[0].message);
     return false;
-  }, [editorProfile.key, treeData, treeCache, skillCategory, skillScope]);
+  }, [editorProfile.key, treeData, treeCache, skillCategory, skillScope, roleSkills]);
 
   const runAction = useCallback(
     async (action: ToolbarAction, data?: unknown): Promise<boolean> => {

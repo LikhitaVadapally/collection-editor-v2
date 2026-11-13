@@ -54,7 +54,7 @@ export const SECTION_DISPLAY: Record<string, { title: string; description?: stri
   'Sixth Section':  { title: 'Licensing & Attribution', description: 'Copyright and usage rights information.' },
   'Consumption policy': { title: 'Consumption policy', description: 'How learners move through this path.' },
   'Skills': { title: 'Skills', description: 'The skills learners gain from this course.' },
-  'Path skills': { title: 'Skills', description: 'The skill framework and, optionally, the role this path prepares learners for.' },
+  'Path skills': { title: 'Skill framework and role', description: 'The skill framework and, optionally, the role this path prepares learners for.' },
 };
 
 export interface IFieldConfig extends PreparedField {

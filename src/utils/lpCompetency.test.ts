@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  courseSkills, coursesNotTeaching, getLpCompetencyFramework, getLpTargetRole, roleSkillsNotTaught, teachesAny, teachesOnly,
+  courseSkills, coursesOutsideRole, getLpCompetencyFramework, getLpTargetRole, roleSkillsNotTaught, teachesOnly,
 } from './lpCompetency';
 import type { INode } from '../types/editor';
 
@@ -35,7 +35,7 @@ describe('lpCompetency', () => {
     const fr = { id: 'f', isFolder: false, metadata: { cuisine: ['FR2'], skill: ['other'] }, children: [] } as unknown as INode;
     expect(courseSkills(fr, 'cuisine')).toEqual(['FR2']);
     const lp = { id: 'r', isFolder: true, metadata: {}, children: [level('l', [fr])] } as unknown as INode;
-    expect(coursesNotTeaching(lp, ['FR2'], 'cuisine')).toEqual([]);
+    expect(coursesOutsideRole(lp, ['FR2'], 'cuisine')).toEqual([]);
     expect(roleSkillsNotTaught(lp, ['FR2', 'IT1'], 'cuisine')).toEqual(['IT1']);
   });
 
@@ -46,14 +46,12 @@ describe('lpCompetency', () => {
     expect(teachesOnly([], ['s1'])).toBe(false);
   });
 
-  it('teachesAny is true when no skills are wanted', () => {
-    expect(teachesAny([], [])).toBe(true);
-    expect(teachesAny(['a'], ['b'])).toBe(false);
-  });
-
-  it('flags regular courses teaching none of the role skills, never the Prior Assessment', () => {
-    const flagged = coursesNotTeaching(root, ['ppe-use', 'sterile-field']).map(c => c.id);
-    expect(flagged).toEqual(['c2', 'c3']);
+  // With a role a path may only carry courses within it: c1 teaches hand-hygiene too, c2 nothing
+  // of the role, c3 nothing at all. The Prior Assessment is never flagged.
+  it('flags regular courses teaching anything outside the role, never the Prior Assessment', () => {
+    expect(coursesOutsideRole(root, ['ppe-use', 'sterile-field']).map(c => c.id)).toEqual(['c1', 'c2', 'c3']);
+    expect(coursesOutsideRole(root, ['hand-hygiene', 'ppe-use', 'budget-preparation']).map(c => c.id)).toEqual(['c3']);
+    expect(coursesOutsideRole(root, [])).toEqual([]);
   });
 
   it('lists role skills no regular course teaches (the Prior Assessment does not count)', () => {

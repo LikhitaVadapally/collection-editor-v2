@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useLibraryStore } from '../store/library.store';
 import { useEditorStore } from '../store/editor.store';
 import { useTreeStore } from '../store/tree.store';
 import { useUiStore } from '../store/ui.store';
 import { useSkillCategory } from './useSkillCategory';
 import { useLpCompetency } from './useLpCompetency';
-import { courseSkills, LP_COMPETENCY_FIELD, teachesOnly } from '../utils/lpCompetency';
-import type { IContent } from '../types/content';
-import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum, isAssessmentLevel } from '../utils/lpStructure';
+import { useSkillScope, type ISkillScope } from './useSkillScope';
+import { LP_COMPETENCY_FIELD } from '../utils/lpCompetency';
+import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum } from '../utils/lpStructure';
 import { compositeSearch, DEFAULT_SEARCH_FIELDS } from '../api/content';
 import { skillFilterValues } from '../utils/skillTerms';
 import { LIBRARY_PRIMARY_CATEGORIES } from '../types/content';
@@ -59,16 +59,6 @@ export function buildLpLibraryFilters(
 }
 
 /**
- * Filters for the "Other courses" search: the path's skill framework's courses not already in
- * the main list (those teaching something outside the browsed skills). It drops the skill filter
- * (composite search can't say "NOT subsetOf"), but keeps the skill framework: a course from
- * another framework can't teach the role at all.
- */
-export function buildOtherCoursesFilters(competencyFrameworkId: string): Record<string, unknown> {
-  return { status: ['Live'], primaryCategory: ['Course'], [LP_COMPETENCY_FIELD]: [competencyFrameworkId] };
-}
-
-/**
  * LP profile search fields: append the resolved skill-category code so each
  * returned course carries its own skill tags in `metadata` — Skills
  * covered, useSkillScope, and the publish-time "course has no skill tag"
@@ -103,32 +93,24 @@ export function buildSearchFields(
 export function computeLibraryEmptyReason(
   competencyScoped: boolean,
   frameworkId: string | undefined,
-  isLpLevel: boolean,
-  activeAssessmentSlot: 'pre' | 'post' | null,
-  selectedSkills: string[],
   isPickingEvaluationCourse = false,
-): 'noCurriculum' | 'noSkills' | null {
+): 'noCurriculum' | null {
   if (!competencyScoped) return null;
   if (isPickingEvaluationCourse) return null;
   if (!frameworkId) return 'noCurriculum';
-  if (isLpLevel && !activeAssessmentSlot && selectedSkills.length === 0) return 'noSkills';
   return null;
 }
 
 /**
- * Skills the LP Library browses for. A Level's own picks win. With a target role, only a Level's
- * picks count: the LP root stores the union of every Level's skills in the same field, and
- * browsing by that would push the role's courses into "Other courses". Otherwise the role's
- * skills (empty without a role).
+ * Skills the LP Library browses for: the path's skill scope (useSkillScope) — the target role's
+ * skills, else the Prior Assessment's. A Level's skills are worked out from its courses, so they
+ * never narrow the Library. With no role and no Prior Assessment nothing narrows it (`manual`).
  */
-export function resolveBrowseSkills(isLpLevel: boolean, nodeSkills: string[], roleSkills: string[]): string[] {
-  const picks = isLpLevel || !roleSkills.length ? nodeSkills : [];
-  return picks.length ? picks : roleSkills;
+export function resolveBrowseSkills(scope: ISkillScope): string[] {
+  return scope.source === 'manual' ? [] : scope.scope;
 }
 
 const PAGE_SIZE = 20;
-const OTHER_COURSES_LIMIT = 30;
-const NO_ITEMS: IContent[] = [];
 const EMPTY_SKILLS: string[] = [];
 
 /**
@@ -186,11 +168,9 @@ export function useLibrary() {
   const editorProfile = useEditorStore((s) => s.editorProfile);
   const activeAssessmentSlot = useUiStore((s) => s.activeAssessmentSlot);
   const activeLevelExamTarget = useUiStore((s) => s.activeLevelExamTarget);
-  const activeNodeMeta = useTreeStore((s) => s.activeNodeMeta);
   const treeData = useTreeStore((s) => s.treeData);
   const treeCache = useTreeStore((s) => s.treeCache);
   const selectedNodeId = useTreeStore((s) => s.selectedNodeId);
-  const getNodeById = useTreeStore((s) => s.getNodeById);
   const skillCategory = useSkillCategory();
   // The LP root's EXPLICITLY chosen Curriculum only — never the channel/
   // context default (contentFramework) that useEditorInit/SparkMetaForm
@@ -205,30 +185,13 @@ export function useLibrary() {
   const competency = editorProfile.competencyScoped && lp.frameworkId
     ? { frameworkId: lp.frameworkId, roleSkills: lp.roleSkills }
     : undefined;
-  // Courses that teach none of the skills being browsed for — shown apart, collapsed, so a
-  // creator can still add one (target role set only).
-  const [otherContent, setOtherContent] = useState<IContent[]>(NO_ITEMS);
-
-  // A regular content Level (not root, not a pre/post/level-assessment slot
-  // — those hold exactly one course and have no skill picker of their own).
-  // Only this context requires skills to be picked before browsing.
-  const selectedNode = selectedNodeId ? getNodeById(selectedNodeId) : undefined;
-  const isLpLevel = editorProfile.competencyScoped
-    && !!selectedNode?.isFolder && !!selectedNode.parent && !isAssessmentLevel(selectedNode);
-
-  // Same resolved skill-category field a Level's own SkillPicker writes to
-  // (never the reserved Sunbird `competencies` field — see lpStructure.ts).
-  const nodeSkills = skillCategory && Array.isArray(activeNodeMeta[skillCategory.code])
-    ? activeNodeMeta[skillCategory.code] as string[]
-    : EMPTY_SKILLS;
-  const selectedLevelSkills = isLpLevel || !competency?.roleSkills.length ? nodeSkills : EMPTY_SKILLS;
 
   const isPickingEvaluationCourse = !!activeAssessmentSlot || !!activeLevelExamTarget;
 
-  const browseSkills = resolveBrowseSkills(isLpLevel, nodeSkills, competency?.roleSkills ?? EMPTY_SKILLS);
+  const skillScope = useSkillScope();
+  const browseSkills = resolveBrowseSkills(skillScope);
   const emptyReason = computeLibraryEmptyReason(
-    editorProfile.competencyScoped, competency?.frameworkId ?? lpFrameworkId, isLpLevel, activeAssessmentSlot,
-    browseSkills, isPickingEvaluationCourse,
+    editorProfile.competencyScoped, competency?.frameworkId ?? lpFrameworkId, isPickingEvaluationCourse,
   );
 
   const load = useCallback(
@@ -247,7 +210,6 @@ export function useLibrary() {
         // emptyReason above for why each case applies).
         if (emptyReason) {
           store.setContent([], 0);
-          setOtherContent(NO_ITEMS);
           return;
         }
         let filters: Record<string, unknown>;
@@ -292,25 +254,6 @@ export function useLibrary() {
           store.appendContent(content, count);
         }
 
-        const wantOthers = reset && !!competency?.roleSkills.length && !isPickingEvaluationCourse;
-        if (!wantOthers) {
-          setOtherContent(NO_ITEMS);
-        } else {
-          // Composite search can't express "NOT subsetOf", so fetch the framework's Courses without
-          // the skill filter and drop the ones that belong in the main list (it may be paged).
-          const shown = new Set(content.map((c) => c.identifier));
-          const others = await compositeSearch({
-            filters: buildOtherCoursesFilters(competency.frameworkId),
-            query,
-            limit: OTHER_COURSES_LIMIT,
-            offset: 0,
-            channel: channel || undefined,
-            sortBy: sortAZ ? { name: 'asc' } : { lastUpdatedOn: 'desc' },
-            fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
-          });
-          setOtherContent(others.content.filter((c) => !shown.has(c.identifier)
-            && !teachesOnly(courseSkills(c as unknown as Record<string, unknown>, skillCategory?.code), browseSkills)));
-        }
       } catch (e) {
         console.error('[useLibrary] load error:', e);
       } finally {
@@ -345,11 +288,9 @@ export function useLibrary() {
   }, [channel, editorProfile.key]);
 
   // LP-only: re-run on anything that changes what the search should be
-  // scoped to (assessment slot or Level Exam target armed, a Level's
-  // selected skills, the root's Curriculum, or which node is selected —
-  // moving from a skills-empty Level to the root/another node can change
-  // emptyReason without changing selectedLevelSkills itself, e.g. both read
-  // as []). Gated by competencyScoped so Collection's user-driven search/
+  // scoped to (assessment slot or Level Exam target armed, the path's skill
+  // scope, the root's Curriculum, or which node is selected). Gated by
+  // competencyScoped so Collection's user-driven search/
   // filter/sort state (set via the search/setFilter/etc. callbacks below) is
   // never silently reset just because the author clicked a different tree
   // node.
@@ -357,7 +298,7 @@ export function useLibrary() {
     if (!editorProfile.competencyScoped) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, selectedLevelSkills.join('|'), lpFrameworkId, selectedNodeId, competency?.frameworkId, competency?.roleSkills.join('|')]);
+  }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, browseSkills.join('|'), lpFrameworkId, selectedNodeId, competency?.frameworkId, competency?.roleSkills.join('|')]);
 
   const search = useCallback(
     (query: string) => {
@@ -425,8 +366,6 @@ export function useLibrary() {
     // LP profile only — why content is (or would be) empty, so the dock can
     // show a guiding message instead of the generic "no results" state.
     emptyReason,
-    // LP with a target role only — courses that teach none of the browsed skills.
-    otherContent,
     roleSkills: competency?.roleSkills ?? EMPTY_SKILLS,
   };
 }

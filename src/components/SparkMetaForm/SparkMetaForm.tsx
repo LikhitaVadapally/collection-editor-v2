@@ -11,7 +11,7 @@ import { useChannelData } from '../../hooks/useChannelData';
 import { useUserFullName } from '../../hooks/useUserFullName';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useCompetencyFrameworks, useCompetencyRoles, useCompetencySkills } from '../../hooks/useCompetencyFrameworks';
-import { coursesNotTeaching } from '../../utils/lpCompetency';
+import { coursesOutsideRole } from '../../utils/lpCompetency';
 import { EVALUATION_COURSE_CATEGORY } from '../../utils/lpStructure';
 import { useLabels } from '../../hooks/useLabels';
 import { useFieldPrepare, SECTION_DISPLAY } from './hooks/useFieldPrepare';
@@ -392,12 +392,12 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
             );
           }
         }
-        // LP: changing the target role keeps every linked course; the ones teaching none of
-        // the new role's skills are flagged (LevelCourseItem), and the author is told how many.
+        // LP: changing the target role keeps every linked course; the ones teaching anything
+        // outside the new role are flagged (LevelCourseItem), and the author is told how many.
         if (changedField === 'targetRole' && isRoot && isLearningPath && typeof value === 'string' && value
           && value !== storedTargetRoleRef.current) {
           const role = competencyRolesRef.current.find(r => r.id === value);
-          const flagged = role ? coursesNotTeaching(useTreeStore.getState().treeData[0], role.skills, skillCategoryCodeRef.current).length : 0;
+          const flagged = role ? coursesOutsideRole(useTreeStore.getState().treeData[0], role.skills, skillCategoryCodeRef.current).length : 0;
           if (flagged > 0) {
             toast(
               lbl.learningPath.roleChangedCoursesFlaggedToast.replace('{count}', String(flagged)),

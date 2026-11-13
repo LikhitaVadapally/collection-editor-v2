@@ -50,12 +50,6 @@ export function courseSkills(
   return Array.isArray(raw) ? raw.map(String) : raw ? [String(raw)] : [];
 }
 
-export function teachesAny(skills: string[], wanted: string[]): boolean {
-  if (!wanted.length) return true;
-  const set = new Set(wanted);
-  return skills.some((s) => set.has(s));
-}
-
 /**
  * Whether every one of a course's skills is in `allowed` (and it has at least one) — the client
  * side of Knowlg's `subsetOf` search filter, which the Level Library uses.
@@ -66,17 +60,16 @@ export function teachesOnly(skills: string[], allowed: string[]): boolean {
 }
 
 /**
- * Regular courses linked under content Levels that teach none of the given skills — the courses
- * flagged after the target role changes (they are kept, never removed silently). Assessment-slot
- * and Level Exam courses are excluded: they test skills, they aren't picked to teach them.
+ * Regular courses under content Levels that teach anything outside the role (or nothing at all).
+ * With a target role a path may only carry courses that stay within the role's skills.
  */
-export function coursesNotTeaching(root: INode | undefined, skills: string[], skillField?: string): INode[] {
-  if (!root || !skills.length) return [];
+export function coursesOutsideRole(root: INode | undefined, roleSkills: string[], skillField?: string): INode[] {
+  if (!root || !roleSkills.length) return [];
   return (root.children ?? [])
     .filter((level) => !isAssessmentLevel(level))
     .flatMap((level) => level.children ?? [])
     .filter((course) => !course.metadata?.['isAssessmentCourse'])
-    .filter((course) => !teachesAny(courseSkills(course, skillField), skills));
+    .filter((course) => !teachesOnly(courseSkills(course, skillField), roleSkills));
 }
 
 /** Role skills no linked regular course teaches yet (the coverage hint). */

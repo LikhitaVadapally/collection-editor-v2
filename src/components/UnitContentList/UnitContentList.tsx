@@ -9,13 +9,12 @@ import { useEditorStore } from '../../store/editor.store';
 import { useUiStore } from '../../store/ui.store';
 import { useLabels } from '../../hooks/useLabels';
 import { useSkillScope } from '../../hooks/useSkillScope';
-import { computeSkillsCovered, computeUncoveredSkills, isAssessmentLevel } from '../../utils/lpStructure';
+import { computeLevelSkills, computeSkillsCovered, isAssessmentLevel } from '../../utils/lpStructure';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useLpCompetency } from '../../hooks/useLpCompetency';
-import { courseSkills, roleSkillsNotTaught, teachesAny } from '../../utils/lpCompetency';
-import { skillLabel, toSkillCodes } from '../../utils/skillTerms';
+import { courseSkills, roleSkillsNotTaught, teachesOnly } from '../../utils/lpCompetency';
+import { skillLabel } from '../../utils/skillTerms';
 import { ContentRow } from './ContentRow';
-import { SkillPicker } from './SkillPicker';
 import { AssessmentSlotItem } from './AssessmentSlotItem';
 import { LevelExamItem } from './LevelExamItem';
 import { LevelCourseItem } from './LevelCourseItem';
@@ -28,7 +27,7 @@ interface UnitContentListProps {
 
 export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, isRoot = false }) => {
   const lbl = useLabels();
-  const { selectedNodeId, getChildrenOf, getNodeById, reorderChildren, deleteNode, activeNodeMeta, updateNode, treeData } = useTreeStore();
+  const { selectedNodeId, getChildrenOf, getNodeById, reorderChildren, deleteNode, treeData } = useTreeStore();
   const editorProfile = useEditorStore(s => s.editorProfile);
   const children = selectedNodeId ? getChildrenOf(selectedNodeId) : [];
   const isEditable = editorMode === 'edit';
@@ -51,16 +50,14 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
 
   const { scope, source } = useSkillScope();
   const skillCategory = useSkillCategory();
-  // Selected skills live under the resolved skill-category code (e.g. 'skill'
-  // for USF) — the SAME field a linked course's own tags use — never the
-  // reserved Sunbird `competencies` field, whose platform schema expects
-  // competency-ontology objects, not plain framework-term strings. Values
-  // are term codes; legacy name tags are normalised here so they still show
-  // as selected, and the next change re-saves the whole selection as codes.
   const skillTerms = skillCategory?.terms;
-  const selectedSkills = skillCategory ? toSkillCodes(activeNodeMeta[skillCategory.code], skillTerms) : [];
+  // A Level's skills are worked out from its courses (computeLevelSkills), never picked by hand;
+  // useSkillsCoveredSync saves them onto the Level.
+  const levelSkills = isLpLevel ? computeLevelSkills(selectedNode, skillCategory?.code, skillTerms) : [];
   const labelOf = useCallback((s: string) => skillLabel(s, skillTerms), [skillTerms]);
-  const outOfScopeSkills = source !== 'manual' ? selectedSkills.filter(s => !scope.includes(s)) : [];
+  // Without a role, a Level's skills must stay within the Prior Assessment's (send for review
+  // enforces it); with one, the course flag below says which course is outside the role.
+  const outOfScopeSkills = source === 'prior' ? levelSkills.filter(s => !scope.includes(s)) : [];
   const { roleSkills } = useLpCompetency();
   const notTaughtRoleSkills = isLpRoot ? roleSkillsNotTaught(treeData[0], roleSkills, skillCategory?.code) : [];
   // Prior Assessment linked but not testing every role skill (the role decides the path's skills).
@@ -69,20 +66,6 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
   const priorMissingRoleSkills = priorCourse && roleSkills.length
     ? roleSkills.filter(s => !courseSkills(priorCourse, skillCategory?.code).includes(s)) : [];
   const skillsCovered = isLpRoot ? computeSkillsCovered(treeData[0], skillCategory?.code, skillTerms) : [];
-  // Selected but no linked course under THIS Level actually carries the tag —
-  // independent of (and can overlap with) out-of-scope: a skill can be both.
-  const uncoveredSkills = isLpLevel
-    ? computeUncoveredSkills(selectedNode, selectedSkills, skillCategory?.code, skillTerms)
-    : [];
-
-  const handleSkillsChange = useCallback((skills: string[]) => {
-    if (!selectedNodeId || !skillCategory?.code) return;
-    // Flat patch — extraMirrorKeys makes this land in node.metadata AND flat
-    // in treeCache, where buildSavePayload persists it. A nested
-    // { metadata: {...} } patch would save a bogus 'metadata' field.
-    updateNode(selectedNodeId, { [skillCategory.code]: skills }, [skillCategory.code]);
-  }, [selectedNodeId, skillCategory?.code, updateNode]);
-
   const sensors = useSensors(
     // distance:5 prevents conflict with outer DnD context (distance:8) while still feeling responsive
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -133,25 +116,39 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
     <div className={styles.container}>
       {isLpRoot && (
         <>
-          <div className={styles.skillsCovered}>
-            <span className={styles.heading}>{lbl.learningPath.skillsCoveredHeading}</span>
-            <span className={styles.emptyHint}>{lbl.learningPath.skillsCoveredDescription}</span>
-            {skillsCovered.length > 0 && (
-              <div className={styles.chips}>
-                {skillsCovered.map(s => <span key={s} className={styles.chip}>{labelOf(s)}</span>)}
-              </div>
-            )}
-            {skillsCovered.length === 0 && (
-              <span className={styles.emptyHint}>{lbl.learningPath.noSkillsYet}</span>
-            )}
-          </div>
-
-          {notTaughtRoleSkills.length > 0 && (
+          {roleSkills.length > 0 ? (
+            // With a target role the path must teach exactly the role: one list, each skill marked
+            // taught or not taught yet (send for review needs every one taught).
             <div className={styles.skillsCovered}>
-              <span className={styles.heading}>{lbl.learningPath.roleSkillsNotTaughtHeading}</span>
+              <span className={styles.heading}>{lbl.learningPath.skillsCoveredHeading}</span>
+              <span className={styles.emptyHint}>{lbl.learningPath.roleSkillsCoveredDescription}</span>
               <div className={styles.chips}>
-                {notTaughtRoleSkills.map(s => <span key={s} className={[styles.chip, styles.chipWarn].join(' ')}>{labelOf(s)}</span>)}
+                {roleSkills.map(s => {
+                  const missing = notTaughtRoleSkills.includes(s);
+                  return (
+                    <span
+                      key={s}
+                      className={missing ? [styles.chip, styles.chipWarn].join(' ') : styles.chip}
+                      title={missing ? lbl.learningPath.roleSkillNotTaughtTitle : lbl.learningPath.roleSkillTaughtTitle}
+                    >
+                      {labelOf(s)}{missing ? ` · ${lbl.learningPath.roleSkillNotTaughtSuffix}` : ' ✓'}
+                    </span>
+                  );
+                })}
               </div>
+            </div>
+          ) : (
+            <div className={styles.skillsCovered}>
+              <span className={styles.heading}>{lbl.learningPath.skillsCoveredHeading}</span>
+              <span className={styles.emptyHint}>{lbl.learningPath.skillsCoveredDescription}</span>
+              {skillsCovered.length > 0 && (
+                <div className={styles.chips}>
+                  {skillsCovered.map(s => <span key={s} className={styles.chip}>{labelOf(s)}</span>)}
+                </div>
+              )}
+              {skillsCovered.length === 0 && (
+                <span className={styles.emptyHint}>{lbl.learningPath.noSkillsYet}</span>
+              )}
             </div>
           )}
 
@@ -172,36 +169,27 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
       )}
 
       {isLpLevel && (
-        <SkillPicker
-          options={scope}
-          selected={selectedSkills}
-          labelOf={labelOf}
-          outOfScope={outOfScopeSkills}
-          uncovered={uncoveredSkills}
-          onChange={handleSkillsChange}
-          isEditable={isEditable}
-          description={source === 'role'
-            ? lbl.learningPath.skillScopeFromRoleNote
-            : source === 'prior'
-              ? lbl.learningPath.skillScopeFromPriorNote
-              : lbl.learningPath.skillScopeManualNote}
-        />
+        <div className={styles.skillsCovered}>
+          <span className={styles.heading}>{lbl.learningPath.skillsHeading}</span>
+          <span className={styles.emptyHint}>{lbl.learningPath.levelSkillsFromCoursesNote}</span>
+          {levelSkills.length > 0 ? (
+            <div className={styles.chips}>
+              {levelSkills.map(s => (
+                <span key={s} className={outOfScopeSkills.includes(s) ? [styles.chip, styles.chipWarn].join(' ') : styles.chip}>
+                  {labelOf(s)}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className={styles.emptyHint}>{lbl.learningPath.levelSkillsEmpty}</span>
+          )}
+          {outOfScopeSkills.length > 0 && (
+            <span className={styles.warnHint} role="status">
+              {lbl.learningPath.levelSkillsOutsidePrior.replace('{skills}', outOfScopeSkills.map(labelOf).join(', '))}
+            </span>
+          )}
+        </div>
       )}
-
-      {isLpLevel && (
-        <button
-          type="button"
-          className={[styles.addRow, styles.addRowAssessment, isDefaultAddMode ? styles.addRowActive : ''].filter(Boolean).join(' ')}
-          disabled={!isEditable}
-          onClick={() => setActiveAssessmentSlot(null)}
-          aria-pressed={isDefaultAddMode}
-        >
-          <span className={styles.addRowIcon}><Plus size={16} /></span>
-          <span className={styles.addRowText}>{lbl.learningPath.addCourseToLevelButton}</span>
-        </button>
-      )}
-
-      {isLpLevel && <LevelExamItem levelId={selectedNodeId} isEditable={isEditable} />}
 
       {isLpLevel && (
         <div className={styles.coursesCard}>
@@ -217,7 +205,7 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
                       item={course}
                       onRemove={handleRemoveCourse}
                       isEditable={isEditable}
-                      notTeachingRole={roleSkills.length > 0 && !teachesAny(courseSkills(course, skillCategory?.code), roleSkills)}
+                      notTeachingRole={roleSkills.length > 0 && !teachesOnly(courseSkills(course, skillCategory?.code), roleSkills)}
                     />
                   ))}
                 </div>
@@ -226,6 +214,20 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
           ) : (
             <span className={styles.emptyHint}>{lbl.learningPath.coursesEmptyHint}</span>
           )}
+          {/* Switches the Library back to adding this Level's courses (after picking a Level Exam
+              or an assessment), so adding lives with the list it adds to. */}
+          <button
+            type="button"
+            className={[styles.addRow, styles.addRowAssessment, isDefaultAddMode ? styles.addRowActive : ''].filter(Boolean).join(' ')}
+            disabled={!isEditable}
+            onClick={() => setActiveAssessmentSlot(null)}
+            aria-pressed={isDefaultAddMode}
+          >
+            <span className={styles.addRowIcon}><Plus size={16} /></span>
+            <span className={styles.addRowText}>{lbl.learningPath.addCourseToLevelButton}</span>
+          </button>
+          {/* The optional Level Exam belongs with the Level's courses: it is one too. */}
+          <LevelExamItem levelId={selectedNodeId} isEditable={isEditable} />
         </div>
       )}
 

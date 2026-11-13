@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useEditorStore } from '../../store/editor.store';
 import { useTreeStore } from '../../store/tree.store';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
+import { useLpCompetency } from '../../hooks/useLpCompetency';
 import { useSkillScope } from '../../hooks/useSkillScope';
 import { validateLearningPathStructure, revalidateAssessmentSlots, type LpValidationIssue } from '../../utils/lpStructure';
 import { Button } from '../shared/Button';
@@ -19,9 +20,10 @@ const LearningPathChecklist: React.FC<{ objectType: string; onConfirm: () => voi
   const treeCache = useTreeStore((s) => s.treeCache);
   const skillCategory = useSkillCategory();
   const { scope } = useSkillScope();
+  const { roleSkills } = useLpCompetency();
   const [asyncIssues, setAsyncIssues] = useState<LpValidationIssue[] | null>(null);
 
-  const structuralIssues = validateLearningPathStructure(root, skillCategory?.code, scope, treeCache, skillCategory?.terms);
+  const structuralIssues = validateLearningPathStructure(root, skillCategory?.code, scope, treeCache, skillCategory?.terms, roleSkills);
 
   useEffect(() => {
     let cancelled = false;

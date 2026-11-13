@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLpLibraryFilters, buildOtherCoursesFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason } from './useLibrary';
+import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason } from './useLibrary';
 import { DEFAULT_SEARCH_FIELDS } from '../api/content';
 
 describe('buildLpLibraryFilters', () => {
@@ -64,36 +64,22 @@ describe('buildSearchFields', () => {
 });
 
 describe('computeLibraryEmptyReason', () => {
-  it('is null for the Collection profile, regardless of the other inputs', () => {
-    expect(computeLibraryEmptyReason(false, undefined, false, null, [])).toBeNull();
-    expect(computeLibraryEmptyReason(false, 'NCF', true, null, [])).toBeNull();
+  it('is null for the Collection profile', () => {
+    expect(computeLibraryEmptyReason(false, undefined)).toBeNull();
+    expect(computeLibraryEmptyReason(false, 'NCF')).toBeNull();
   });
 
-  it('is noCurriculum when the LP root has no explicit Curriculum yet', () => {
-    expect(computeLibraryEmptyReason(true, undefined, false, null, [])).toBe('noCurriculum');
-    expect(computeLibraryEmptyReason(true, undefined, true, null, [])).toBe('noCurriculum');
+  it('is noCurriculum when the LP root has no skill framework or Curriculum yet', () => {
+    expect(computeLibraryEmptyReason(true, undefined)).toBe('noCurriculum');
   });
 
   it('is null with no Curriculum while picking an Evaluation Course for a slot/Level Exam — that course defines the scope, not the other way around', () => {
-    expect(computeLibraryEmptyReason(true, undefined, false, 'pre', [], true)).toBeNull();
-    expect(computeLibraryEmptyReason(true, undefined, true, null, [], true)).toBeNull();
+    expect(computeLibraryEmptyReason(true, undefined, true)).toBeNull();
   });
 
-  it('is noSkills only on a content Level with a Curriculum set but no skills selected', () => {
-    expect(computeLibraryEmptyReason(true, 'NCF', true, null, [])).toBe('noSkills');
-  });
-
-  it('is null on a content Level once skills are selected', () => {
-    expect(computeLibraryEmptyReason(true, 'NCF', true, null, ['Java'])).toBeNull();
-  });
-
-  it('is null outside a content Level (root, or an assessment Level) even with no skills selected', () => {
-    expect(computeLibraryEmptyReason(true, 'NCF', false, null, [])).toBeNull();
-  });
-
-  it('is null while filling the Prior/Outcome Assessment slot, regardless of skills selected', () => {
-    expect(computeLibraryEmptyReason(true, 'NCF', true, 'pre', [])).toBeNull();
-    expect(computeLibraryEmptyReason(true, 'NCF', true, 'post', [])).toBeNull();
+  // A Level's skills come from its courses, so a Level with none yet still lists courses.
+  it('is null once a Curriculum is set, on a Level with no courses too', () => {
+    expect(computeLibraryEmptyReason(true, 'NCF')).toBeNull();
   });
 });
 
@@ -118,33 +104,13 @@ describe('buildLpLibraryFilters with a competency framework', () => {
   });
 });
 
-describe('buildOtherCoursesFilters', () => {
-  it('keeps the path skill framework so courses from other frameworks never show', () => {
-    expect(buildOtherCoursesFilters('agro')).toEqual({
-      status: ['Live'],
-      primaryCategory: ['Course'],
-      competencyFramework: ['agro'],
-    });
-  });
-});
-
 describe('resolveBrowseSkills', () => {
-  const role = ['farmer-counselling', 'field-visit-planning'];
-
-  it('on the LP root with a role, ignores the root\'s stored Level-skills union and browses the role', () => {
-    expect(resolveBrowseSkills(false, ['soil-sampling', 'staff-briefing'], role)).toEqual(role);
+  it('browses the role\'s skills, else the Prior Assessment\'s', () => {
+    expect(resolveBrowseSkills({ scope: ['farmer-counselling'], source: 'role' })).toEqual(['farmer-counselling']);
+    expect(resolveBrowseSkills({ scope: ['Java'], source: 'prior' })).toEqual(['Java']);
   });
 
-  it('on a Level, its own picks win over the role', () => {
-    expect(resolveBrowseSkills(true, ['farmer-counselling'], role)).toEqual(['farmer-counselling']);
-  });
-
-  it('on a Level with no picks, browses the role', () => {
-    expect(resolveBrowseSkills(true, [], role)).toEqual(role);
-  });
-
-  it('without a role, keeps using the selected node\'s skills as before', () => {
-    expect(resolveBrowseSkills(false, ['Java'], [])).toEqual(['Java']);
-    expect(resolveBrowseSkills(true, [], [])).toEqual([]);
+  it('does not narrow the Library without a role or Prior Assessment', () => {
+    expect(resolveBrowseSkills({ scope: ['Java', 'SQL'], source: 'manual' })).toEqual([]);
   });
 });

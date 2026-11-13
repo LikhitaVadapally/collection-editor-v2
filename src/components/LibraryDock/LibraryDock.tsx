@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X } from 'lucide-react';
 import type { EditorMode } from '../../types/editor';
 import type { IContent } from '../../types/content';
 import { CT_FILTERS } from '../../types/content';
@@ -60,9 +60,7 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
     loadMore,
     activeAssessmentSlot,
     emptyReason,
-    otherContent,
   } = useLibrary();
-  const [othersOpen, setOthersOpen] = useState(false);
 
   const { addResource, selectedNodeId, treeData, treeCache } = useTreeStore();
   const setActiveAssessmentSlot = useUiStore(s => s.setActiveAssessmentSlot);
@@ -274,35 +272,6 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
     [activeFilters],
   );
 
-  // Target role set: courses teaching none of the browsed skills, apart and collapsed by default.
-  const renderOtherCourses = () => (otherContent.length > 0 ? (
-    <div className={styles.otherCourses}>
-      <button
-        type="button"
-        className={styles.otherCoursesToggle}
-        onClick={() => setOthersOpen((v) => !v)}
-        aria-expanded={othersOpen}
-      >
-        {othersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span>{lbl.learningPath.otherCoursesHeading.replace('{count}', String(otherContent.length))}</span>
-      </button>
-      {othersOpen && (
-        <>
-          <span className={styles.otherCoursesHint}>{lbl.learningPath.otherCoursesHint}</span>
-          {otherContent.map((item) => (
-            <LibraryCard
-              key={item.identifier}
-              item={item}
-              onAdd={handleAdd}
-              onPreview={handleCardPreview}
-              isDraggable={isEditable}
-              isAdded={addedIds.has(item.identifier)}
-            />
-          ))}
-        </>
-      )}
-    </div>
-  ) : null);
 
   return (
     <div className={styles.dock}>
@@ -450,7 +419,6 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                   {isLoading ? lbl.libraryDock.loadingText : lbl.libraryDock.loadMoreText}
                 </button>
               )}
-              {renderOtherCourses()}
             </>
           ) : (
             <>
@@ -461,11 +429,6 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                   <p>{lbl.learningPath.noCurriculumEmptyTitle}</p>
                   <span>{lbl.learningPath.noCurriculumEmptyHint}</span>
                 </>
-              ) : emptyReason === 'noSkills' ? (
-                <>
-                  <p>{lbl.learningPath.noSkillsEmptyTitle}</p>
-                  <span>{lbl.learningPath.noSkillsEmptyHint}</span>
-                </>
               ) : (
                 <>
                   <p>{lbl.libraryDock.noContentFound}</p>
@@ -473,7 +436,6 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                 </>
               )}
             </div>
-            {renderOtherCourses()}
             </>
           )}
         </div>

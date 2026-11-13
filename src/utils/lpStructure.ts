@@ -2,6 +2,9 @@ import { readContent } from '../api/hierarchy';
 import type { INode } from '../types/editor';
 import type { ITerm } from '../types/framework';
 import { skillLabel, toSkillCodes } from './skillTerms';
+// lpCompetency imports isAssessmentLevel from here; the cycle is safe because both sides only
+// call each other's functions at run time, never at module load.
+import { courseSkills, coursesOutsideRole, roleSkillsNotTaught } from './lpCompetency';
 
 export const EVALUATION_COURSE_CATEGORY = 'Evaluation Course';
 
@@ -297,10 +300,29 @@ export function computeSkillsCovered(
     if (isPrePostSlotAtIndex(levels, idx)) {
       toSkillCodes(lvl.children![0].metadata?.[skillCategoryCode], skillTerms).forEach((s) => covered.add(s));
     } else {
-      toSkillCodes(lvl.metadata?.[skillCategoryCode], skillTerms).forEach((s) => covered.add(s));
+      computeLevelSkills(lvl, skillCategoryCode, skillTerms).forEach((s) => covered.add(s));
     }
   });
   return Array.from(covered);
+}
+
+/**
+ * A content Level's skills: everything its regular courses teach (the Level Exam course tests
+ * skills, it doesn't add any). Worked out from the courses, never picked by hand, so a Level's
+ * skills can't disagree with what it actually teaches. As term codes.
+ */
+export function computeLevelSkills(
+  level: INode | undefined,
+  skillCategoryCode: string | undefined,
+  skillTerms: ITerm[] = [],
+): string[] {
+  if (!level || !skillCategoryCode) return [];
+  const skills = new Set<string>();
+  for (const course of level.children ?? []) {
+    if (course.metadata?.['isAssessmentCourse']) continue;
+    toSkillCodes(course.metadata?.[skillCategoryCode], skillTerms).forEach((sk) => skills.add(sk));
+  }
+  return Array.from(skills);
 }
 
 /**
@@ -323,9 +345,12 @@ export function resolveSkillsCoveredForSync(
   skillCategoryCode: string | undefined,
   treeCache: Record<string, Record<string, unknown>>,
   skillTerms: ITerm[] = [],
+  roleSkills: string[] = [],
 ): string[] | null {
   if (!root || !skillCategoryCode) return null;
-  const covered = computeSkillsCovered(root, skillCategoryCode, skillTerms);
+  // With a target role the path teaches exactly the role (send for review enforces it), so the
+  // path's own skills — what lern credits on completion — are the role's skills.
+  const covered = roleSkills.length ? [...roleSkills] : computeSkillsCovered(root, skillCategoryCode, skillTerms);
   const stored = (treeCache[root.id]?.[skillCategoryCode] ?? root.metadata?.[skillCategoryCode]) as
     string[] | string | undefined;
   const storedArray = toStringArray(stored);
@@ -353,35 +378,8 @@ export function findLevelsWithOutOfScopeSkills(
   const levels = root.children ?? [];
   return levels.filter((lvl, idx) => {
     if (isPrePostSlotAtIndex(levels, idx)) return false;
-    const skills = toSkillCodes(lvl.metadata?.[skillCategoryCode], skillTerms);
-    return skills.some((s) => !scope.includes(s));
+    return computeLevelSkills(lvl, skillCategoryCode, skillTerms).some((s) => !scope.includes(s));
   });
-}
-
-/**
- * Which of a content Level's SELECTED skills currently have zero linked
- * course tagged with them. computeSkillsCovered (and the root "Skills
- * covered" summary) reads only the Level's own selection — it has no idea
- * whether any course under that Level actually carries a given skill tag,
- * so a Level can claim to cover a skill that nothing linked to it teaches.
- * Courses missing a skill tag entirely are already caught separately by
- * validateLearningPathStructure's courseMissingSkillTag rule; this is about
- * the Level's selection vs. what its courses are ACTUALLY tagged with.
- * Both sides are compared as term codes — linked courses may still carry
- * legacy name tags. Returns the uncovered skills as codes.
- */
-export function computeUncoveredSkills(
-  level: INode | undefined,
-  selectedSkills: string[],
-  skillCategoryCode: string | undefined,
-  skillTerms: ITerm[] = [],
-): string[] {
-  if (!level || !skillCategoryCode || selectedSkills.length === 0) return [];
-  const covered = new Set<string>();
-  for (const course of level.children ?? []) {
-    toSkillCodes(course.metadata?.[skillCategoryCode], skillTerms).forEach((s) => covered.add(s));
-  }
-  return toSkillCodes(selectedSkills, skillTerms).filter((s) => !covered.has(s));
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +414,9 @@ export const REQUIRES_PRIOR_POLICIES = new Set(['adaptive']);
  * linked course carries a skill tag; no duplicate course across the path.
  * `skillScope` empty means "no scope constraint yet" (matches
  * useSkillScope's manual-fallback catalog, not an empty scope).
+ * With a target role (`roleSkills` non-empty) the path must teach every one
+ * of the role's skills, and only those: each role skill is taught by some
+ * regular course, and no regular course teaches a skill outside the role.
  */
 export function validateLearningPathStructure(
   root: INode | undefined,
@@ -423,6 +424,7 @@ export function validateLearningPathStructure(
   skillScope: string[],
   treeCache: Record<string, Record<string, unknown>> = {},
   skillTerms: ITerm[] = [],
+  roleSkills: string[] = [],
 ): LpValidationIssue[] {
   const labels = (codes: string[]) => codes.map((c) => skillLabel(c, skillTerms)).join(', ');
   const issues: LpValidationIssue[] = [];
@@ -483,31 +485,14 @@ export function validateLearningPathStructure(
     if (isEmpty) {
       issues.push({ code: 'emptyLevel', nodeId: lvl.id, message: `"${lvl.name}" has no courses yet.` });
     }
-    const skills = skillCategoryCode ? toSkillCodes(lvl.metadata?.[skillCategoryCode], skillTerms) : [];
-    if (skills.length === 0) {
-      // An empty Level's "no courses yet" above already covers this — the
-      // less specific "needs a skill selected" would be redundant noise.
-      if (!isEmpty) {
-        issues.push({ code: 'levelMissingSkills', nodeId: lvl.id, message: `"${lvl.name}" needs at least one skill selected.` });
-      }
-    } else {
-      if (skillScope.length > 0) {
-        const outOfScope = skills.filter((s) => !skillScope.includes(s));
-        if (outOfScope.length > 0) {
-          issues.push({
-            code: 'levelSkillsOutOfScope', nodeId: lvl.id,
-            message: `"${lvl.name}" has skills outside the current scope: ${labels(outOfScope)}.`,
-          });
-        }
-      }
-      // Independent of scope, and runs even when isEmpty (every selected
-      // skill is trivially uncovered with zero courses) — naming exactly
-      // which skills still need a covering course, not just "no courses yet."
-      const uncovered = computeUncoveredSkills(lvl, skills, skillCategoryCode, skillTerms);
-      if (uncovered.length > 0) {
+    // A Level's skills come from its courses (computeLevelSkills). Without a role they must stay
+    // within the Prior Assessment's skills; with one, courseOutsideRole below covers it.
+    if (!roleSkills.length && skillScope.length > 0) {
+      const outOfScope = computeLevelSkills(lvl, skillCategoryCode, skillTerms).filter((s) => !skillScope.includes(s));
+      if (outOfScope.length > 0) {
         issues.push({
-          code: 'levelSkillsUncovered', nodeId: lvl.id,
-          message: `"${lvl.name}" has no course covering: ${labels(uncovered)}.`,
+          code: 'levelSkillsOutOfScope', nodeId: lvl.id,
+          message: `"${lvl.name}" has courses teaching skills outside the Prior Assessment: ${labels(outOfScope)}.`,
         });
       }
     }
@@ -517,6 +502,24 @@ export function validateLearningPathStructure(
       if (tags.length === 0) {
         issues.push({ code: 'courseMissingSkillTag', nodeId: course.id, message: `"${course.name}" has no skill tag.` });
       }
+    }
+  }
+
+  if (roleSkills.length > 0) {
+    for (const course of coursesOutsideRole(root, roleSkills, skillCategoryCode)) {
+      const outside = courseSkills(course, skillCategoryCode).filter((sk) => !roleSkills.includes(sk));
+      if (outside.length === 0) continue; // untagged: courseMissingSkillTag above already says so
+      issues.push({
+        code: 'courseOutsideRole', nodeId: course.id,
+        message: `"${course.name}" teaches skills outside the target role: ${labels(outside)}. Remove it from the path.`,
+      });
+    }
+    const notTaught = roleSkillsNotTaught(root, roleSkills, skillCategoryCode);
+    if (notTaught.length > 0) {
+      issues.push({
+        code: 'roleSkillsNotTaught',
+        message: `This path must teach every skill of the target role. Not taught yet: ${labels(notTaught)}.`,
+      });
     }
   }
 
