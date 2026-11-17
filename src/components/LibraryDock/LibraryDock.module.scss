@@ -300,22 +300,6 @@
   span {
     font-size: 12px;
   }
-
-  .emptyAction {
-    margin-top: 4px;
-    padding: 6px 12px;
-    border: 1.5px solid var(--sbx-primary);
-    border-radius: var(--sbx-r-btn);
-    background: white;
-    color: var(--sbx-primary);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-
-    &:hover {
-      background: var(--sbx-primary-light);
-    }
-  }
 }
 
 .collapseBtn {
@@ -340,3 +324,62 @@
 
 
 
+
+// Course: nudge to pick skills, above the list.
+.courseHint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: var(--sbx-r-btn);
+  background: var(--sbx-primary-light, #fdf1ec);
+  color: var(--sbx-text-secondary, #595959);
+  font-size: 12px;
+  line-height: 1.4;
+
+  svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+}
+
+// Course with skills: heading over the content that teaches them.
+.sectionHeading {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sbx-text-secondary, #595959);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px 0 4px;
+}
+
+// Course with skills: the rest, collapsed.
+.otherContent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sbx-border, #e5e5e5);
+}
+
+.otherContentToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: var(--sbx-text-secondary, #595959);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--sbx-font);
+  cursor: pointer;
+  text-align: left;
+}
+
+.otherContentHint {
+  font-size: 12px;
+  color: var(--sbx-text-tertiary, #8c8c8c);
+}

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X, Target } from 'lucide-react';
+import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { EditorMode } from '../../types/editor';
 import type { IContent } from '../../types/content';
 import { CT_FILTERS } from '../../types/content';
@@ -60,10 +60,12 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
     loadMore,
     activeAssessmentSlot,
     emptyReason,
-    canFilterBySkills,
-    skillFiltered,
-    setShowAll,
+    skillMatched,
+    otherContent,
+    courseHint,
   } = useLibrary();
+  // Course: "Other content" starts collapsed so the skill-matched content leads.
+  const [othersOpen, setOthersOpen] = useState(false);
 
   const { addResource, selectedNodeId, treeData, treeCache } = useTreeStore();
   const setActiveAssessmentSlot = useUiStore(s => s.setActiveAssessmentSlot);
@@ -276,6 +278,37 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
   );
 
 
+  // Course with skills: what the browse finds that teaches none of them — apart and collapsed, so the
+  // author can still add it.
+  const renderOtherContent = () => (skillMatched && otherContent.length > 0 ? (
+    <div className={styles.otherContent} data-testid="library-other-content">
+      <button
+        type="button"
+        className={styles.otherContentToggle}
+        onClick={() => setOthersOpen((v) => !v)}
+        aria-expanded={othersOpen}
+      >
+        {othersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span>{lbl.libraryDock.otherContentHeading.replace('{count}', String(otherContent.length))}</span>
+      </button>
+      {othersOpen && (
+        <>
+          <span className={styles.otherContentHint}>{lbl.libraryDock.otherContentHint}</span>
+          {otherContent.map((item) => (
+            <LibraryCard
+              key={item.identifier}
+              item={item}
+              onAdd={handleAdd}
+              onPreview={handleCardPreview}
+              isDraggable={isEditable}
+              isAdded={addedIds.has(item.identifier)}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  ) : null);
+
   return (
     <div className={styles.dock}>
       {/* Header — collapse control sits to the left of the Library icon */}
@@ -339,20 +372,6 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
         >
           {sortAZ ? <ArrowUpAZ size={15} /> : <Clock size={15} />}
         </button>
-        {/* Course only: narrow to content teaching the course's skills (default) or show all. */}
-        {canFilterBySkills && (
-          <button
-            type="button"
-            className={[styles.filterToggleBtn, skillFiltered ? styles.filterToggleBtnActive : ''].join(' ')}
-            onClick={() => setShowAll(skillFiltered)}
-            aria-label={skillFiltered ? lbl.libraryDock.skillFilterOnAriaLabel : lbl.libraryDock.skillFilterOffAriaLabel}
-            aria-pressed={skillFiltered}
-            title={skillFiltered ? lbl.libraryDock.skillFilterOnTitle : lbl.libraryDock.skillFilterOffTitle}
-            data-testid="library-skill-filter-toggle"
-          >
-            <Target size={15} />
-          </button>
-        )}
         {/* Advanced filters (board/medium/gradeLevel/subject/...) don't apply
             to LP's Course-only, skill-scoped search — see buildLpLibraryFilters. */}
         {!isLearningPath && (
@@ -400,6 +419,16 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
       <div className={styles.mainArea}>
         {/* Card list */}
         <div className={styles.cardList} role="list" aria-label={lbl.libraryDock.libraryContentAriaLabel}>
+          {/* Course with no skills yet: picking them sorts the content that teaches them first. */}
+          {courseHint === 'pickSkills' && (
+            <div className={styles.courseHint} data-testid="library-pick-skills-hint">
+              <Info size={14} />
+              <span>{lbl.libraryDock.pickSkillsHint}</span>
+            </div>
+          )}
+          {skillMatched && content.length > 0 && (
+            <div className={styles.sectionHeading}>{lbl.libraryDock.matchingHeading}</div>
+          )}
           {isLoading && content.length === 0 ? (
             // Loading skeleton
             Array.from({ length: 4 }).map((_, i) => (
@@ -436,6 +465,7 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                   {isLoading ? lbl.libraryDock.loadingText : lbl.libraryDock.loadMoreText}
                 </button>
               )}
+              {renderOtherContent()}
             </>
           ) : (
             <>
@@ -446,17 +476,10 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                   <p>{lbl.learningPath.noCurriculumEmptyTitle}</p>
                   <span>{lbl.learningPath.noCurriculumEmptyHint}</span>
                 </>
-              ) : skillFiltered ? (
+              ) : skillMatched ? (
                 <>
                   <p>{lbl.libraryDock.noSkillMatchTitle}</p>
                   <span>{lbl.libraryDock.noSkillMatchHint}</span>
-                  <button
-                    type="button"
-                    className={styles.emptyAction}
-                    onClick={() => setShowAll(true)}
-                  >
-                    {lbl.libraryDock.showAllContent}
-                  </button>
                 </>
               ) : (
                 <>
@@ -465,6 +488,7 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                 </>
               )}
             </div>
+            {renderOtherContent()}
             </>
           )}
         </div>

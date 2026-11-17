@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLibraryStore } from '../store/library.store';
 import { useEditorStore } from '../store/editor.store';
 import { useTreeStore } from '../store/tree.store';
@@ -11,12 +11,12 @@ import { LP_COMPETENCY_FIELD } from '../utils/lpCompetency';
 import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum } from '../utils/lpStructure';
 import { compositeSearch, DEFAULT_SEARCH_FIELDS } from '../api/content';
 import { skillFilterValues } from '../utils/skillTerms';
-import { LIBRARY_PRIMARY_CATEGORIES } from '../types/content';
+import { LIBRARY_PRIMARY_CATEGORIES, type IContent } from '../types/content';
 import type { LibraryFilters } from '../components/LibraryDock/LibraryFilterPanel';
 import type { ITerm } from '../types/framework';
 
 /**
- * Course profile, "matching skills" view: content in the course's own skill framework that
+ * Course profile, "Teaches this course's skills" section: content in the course's own skill framework that
  * carries at least one of the course's skills. Skill codes only mean something inside their own
  * framework, hence the framework filter. A plain array is Knowlg's "any of" (unlike the LP
  * Level's `subsetOf`): a PDF that also covers another skill still teaches this one. Names ride
@@ -32,6 +32,38 @@ export function buildCourseLibraryFilters(
     [LP_COMPETENCY_FIELD]: [frameworkId],
     [skillField]: skillFilterValues(skills, terms),
   };
+}
+
+/**
+ * Course profile, "Other content" section: what the same browse returns WITHOUT the skill filter,
+ * less anything the first section already holds or that teaches one of the course's skills (the
+ * first section can be paged, so its loaded cards alone don't cover every match). Composite search
+ * can't say "NOT any of", hence the client-side pass.
+ */
+export function selectOtherContent(
+  others: IContent[],
+  shownIds: Set<string>,
+  frameworkId: string,
+  skillField: string,
+  matchValues: string[],
+): IContent[] {
+  const match = new Set(matchValues);
+  return others.filter((c) => {
+    if (shownIds.has(c.identifier)) return false;
+    const meta = c as unknown as Record<string, unknown>;
+    if (meta[LP_COMPETENCY_FIELD] !== frameworkId) return true;
+    const tags = meta[skillField];
+    const list = Array.isArray(tags) ? tags : typeof tags === 'string' ? [tags] : [];
+    return !list.some((t) => match.has(String(t)));
+  });
+}
+
+/**
+ * Course profile: the hint above the Library. A Course with no skill framework or no skills yet
+ * gets a nudge to pick them, since that's what sorts the matching content first.
+ */
+export function courseLibraryHint(course: { isCourse: boolean; ready: boolean }): 'pickSkills' | null {
+  return course.isCourse && !course.ready ? 'pickSkills' : null;
 }
 
 /**
@@ -133,6 +165,9 @@ export function resolveBrowseSkills(scope: ISkillScope): string[] {
 
 const PAGE_SIZE = 20;
 const EMPTY_SKILLS: string[] = [];
+/** One page is enough for the collapsed "Other content" section; search narrows it further. */
+const OTHER_CONTENT_LIMIT = 50;
+const NO_ITEMS: IContent[] = [];
 
 /**
  * Returns allowed primaryCategory values for the currently selected unit,
@@ -207,9 +242,9 @@ export function useLibrary() {
     ? { frameworkId: lp.frameworkId, roleSkills: lp.roleSkills }
     : undefined;
   const course = useCourseCompetency();
-  const showAll = useLibraryStore((s) => s.showAll);
-  // Narrowed to the course's skills unless the author asked for everything.
-  const courseSkillFiltered = course.ready && !showAll;
+  // Course with skills: the main list is narrowed to them, and the rest sits in "Other content".
+  const courseSkillFiltered = course.ready;
+  const [otherContent, setOtherContent] = useState<IContent[]>(NO_ITEMS);
 
   const isPickingEvaluationCourse = !!activeAssessmentSlot || !!activeLevelExamTarget;
 
@@ -235,6 +270,7 @@ export function useLibrary() {
         // emptyReason above for why each case applies).
         if (emptyReason) {
           store.setContent([], 0);
+          setOtherContent(NO_ITEMS);
           return;
         }
         let filters: Record<string, unknown>;
@@ -259,10 +295,14 @@ export function useLibrary() {
           if (advancedFilters?.gradeLevel?.length) filters['gradeLevel'] = advancedFilters.gradeLevel;
           if (advancedFilters?.subject?.length) filters['subject'] = advancedFilters.subject;
           if (advancedFilters?.primaryCategory?.length) filters['primaryCategory'] = advancedFilters.primaryCategory;
-          if (courseSkillFiltered && course.frameworkId && course.skillField) {
-            Object.assign(filters, buildCourseLibraryFilters(course.frameworkId, course.skillField, course.skills, course.terms));
-          }
         }
+        // The browse without the course's skill filter, for the "Other content" search below.
+        const unskilledFilters = { ...filters };
+        const skillMatch = courseSkillFiltered && course.frameworkId && course.skillField
+          ? buildCourseLibraryFilters(course.frameworkId, course.skillField, course.skills, course.terms)
+          : undefined;
+        if (skillMatch) Object.assign(filters, skillMatch);
+        const sortBy: Record<string, string> = sortAZ ? { name: 'asc' } : { lastUpdatedOn: 'desc' };
 
         const currentOffset = reset ? 0 : store.offset;
 
@@ -272,7 +312,7 @@ export function useLibrary() {
           limit: query ? 50 : PAGE_SIZE,
           offset: currentOffset,
           channel: channel || undefined,
-          sortBy: sortAZ ? { name: 'asc' } : { lastUpdatedOn: 'desc' },
+          sortBy,
           fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
         });
 
@@ -280,6 +320,24 @@ export function useLibrary() {
           store.setContent(content, count);
         } else {
           store.appendContent(content, count);
+        }
+
+        // "Load more" only pages the main list; the other section is refetched with each new browse.
+        if (!skillMatch || !course.frameworkId || !course.skillField) {
+          if (reset) setOtherContent(NO_ITEMS);
+        } else if (reset) {
+          const others = await compositeSearch({
+            filters: unskilledFilters,
+            query,
+            limit: OTHER_CONTENT_LIMIT,
+            offset: 0,
+            channel: channel || undefined,
+            sortBy,
+            fields: [...DEFAULT_SEARCH_FIELDS, course.skillField, LP_COMPETENCY_FIELD],
+          });
+          const shown = new Set(content.map((c) => c.identifier));
+          const matchValues = skillMatch[course.skillField] as string[];
+          setOtherContent(selectOtherContent(others.content, shown, course.frameworkId, course.skillField, matchValues));
         }
 
       } catch (e) {
@@ -328,9 +386,9 @@ export function useLibrary() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, browseSkills.join('|'), lpFrameworkId, selectedNodeId, competency?.frameworkId, competency?.roleSkills.join('|')]);
 
-  // Course-only: re-run when the course's skill framework or skills change, or the author flips
-  // between matching and all content. The author's search/filter/sort state is kept, since the
-  // switch narrows or widens the same browse rather than starting a new one.
+  // Course-only: re-run when the course's skill framework or skills change. The author's
+  // search/filter/sort state is kept, since the change re-sorts the same browse rather than
+  // starting a new one.
   const courseSkillsKey = course.skills.join('|');
   const courseEffectMounted = useRef(false);
   useEffect(() => {
@@ -342,7 +400,7 @@ export function useLibrary() {
     if (editorProfile.competencyScoped) return;
     load(store.searchQuery, store.activeFilter, store.advancedFilters, true, store.sortAZ);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [course.ready, course.frameworkId, course.skillField, courseSkillsKey, showAll]);
+  }, [course.ready, course.frameworkId, course.skillField, courseSkillsKey]);
 
   const search = useCallback(
     (query: string) => {
@@ -411,10 +469,10 @@ export function useLibrary() {
     // show a guiding message instead of the generic "no results" state.
     emptyReason,
     roleSkills: competency?.roleSkills ?? EMPTY_SKILLS,
-    // Course profile only — whether the course has skills to match content against, and whether
-    // the Library is currently narrowed to them (drives the dock's toggle and empty state).
-    canFilterBySkills: course.ready,
-    skillFiltered: courseSkillFiltered,
-    setShowAll: store.setShowAll,
+    // Course profile only — with skills, the main list holds the content that teaches them and
+    // otherContent the rest; without, a hint to pick them.
+    skillMatched: courseSkillFiltered,
+    otherContent,
+    courseHint: courseLibraryHint(course),
   };
 }

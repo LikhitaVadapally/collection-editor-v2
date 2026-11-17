@@ -12,8 +12,6 @@ interface LibraryState {
   totalCount: number;
   offset: number;
   sortAZ: boolean;
-  /** Course profile: show all content instead of only content teaching the course's skills. */
-  showAll: boolean;
   // actions
   setContent: (content: IContent[], total: number) => void;
   appendContent: (content: IContent[], total: number) => void;
@@ -23,7 +21,6 @@ interface LibraryState {
   setAdvancedFilters: (filters: LibraryFilters) => void;
   setOffset: (offset: number) => void;
   setSortAZ: (sortAZ: boolean) => void;
-  setShowAll: (showAll: boolean) => void;
   applyFilter: () => void;
 }
 
@@ -37,7 +34,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   totalCount: 0,
   offset: 0,
   sortAZ: false,
-  showAll: false,
 
   setContent: (content, total) => {
     set({ allContent: content, totalCount: total, offset: content.length });
@@ -69,7 +65,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setSortAZ: (sortAZ) => set({ sortAZ }),
 
-  setShowAll: (showAll) => set({ showAll }),
 
   applyFilter: () => {
     const { allContent, activeFilter, searchQuery } = get();

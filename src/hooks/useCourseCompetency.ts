@@ -7,6 +7,8 @@ import type { INode } from '../types/editor';
 import type { ITerm } from '../types/framework';
 
 export interface ICourseCompetency {
+  /** The tree being edited is a Course (not a Learning Path, Evaluation Course or other collection). */
+  isCourse: boolean;
   /** The course's skill framework, once it has read as one (a stored `NCF` never does). */
   frameworkId: string | undefined;
   /** The content field skill tags live in for this framework (its last category code). */
@@ -21,7 +23,7 @@ export interface ICourseCompetency {
 
 const NONE: string[] = [];
 const NO_TERMS: ITerm[] = [];
-const INERT: ICourseCompetency = { frameworkId: undefined, skillField: undefined, skills: NONE, terms: NO_TERMS, ready: false };
+const INERT: ICourseCompetency = { isCourse: false, frameworkId: undefined, skillField: undefined, skills: NONE, terms: NO_TERMS, ready: false };
 
 /** The root's metadata with unsaved edits applied, the way SparkMetaForm reads it. */
 function effectiveRootMeta(
@@ -58,9 +60,9 @@ export function resolveCourseCompetency(
   if (!isCourse) return INERT;
   const { frameworkId: stored, skillField, terms, isLoaded } = loaded;
   const frameworkId = stored && isLoaded && terms.length > 0 ? stored : undefined;
-  if (!frameworkId || !skillField) return INERT;
+  if (!frameworkId || !skillField) return { ...INERT, isCourse: true };
   const skills = courseSkills(rootMeta, skillField);
-  return { frameworkId, skillField, skills, terms, ready: skills.length > 0 };
+  return { isCourse: true, frameworkId, skillField, skills, terms, ready: skills.length > 0 };
 }
 
 /** Course skill framework + chosen skills. Inert (all empty, not ready) for anything but a Course. */
@@ -85,5 +87,5 @@ export function useCourseCompetency(): ICourseCompetency {
   const skillsKey = resolved.skills.join('|');
   // Stable identity across renders while nothing relevant changed, so effects keyed on it don't loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => resolved, [resolved.ready, resolved.frameworkId, resolved.skillField, skillsKey, resolved.terms]);
+  return useMemo(() => resolved, [resolved.isCourse, resolved.ready, resolved.frameworkId, resolved.skillField, skillsKey, resolved.terms]);
 }

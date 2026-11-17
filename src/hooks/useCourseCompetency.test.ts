@@ -23,7 +23,7 @@ describe('isCourseRoot', () => {
 describe('resolveCourseCompetency', () => {
   it("is ready with the course's framework, skill field and skills", () => {
     expect(resolveCourseCompetency(true, { cuisine: ['cuisine-french'] }, loaded)).toEqual({
-      frameworkId: 'culinary_test', skillField: 'cuisine', skills: ['cuisine-french'], terms, ready: true,
+      isCourse: true, frameworkId: 'culinary_test', skillField: 'cuisine', skills: ['cuisine-french'], terms, ready: true,
     });
   });
 
@@ -36,10 +36,10 @@ describe('resolveCourseCompetency', () => {
   it('is inert until the framework loads, or when it has no skills (a stored NCF)', () => {
     expect(resolveCourseCompetency(true, { cuisine: ['cuisine-french'] }, { ...loaded, isLoaded: false }).ready).toBe(false);
     expect(resolveCourseCompetency(true, { skill: ['x'] }, { frameworkId: 'NCF', skillField: undefined, terms: [], isLoaded: true }))
-      .toMatchObject({ frameworkId: undefined, ready: false });
+      .toMatchObject({ isCourse: true, frameworkId: undefined, ready: false });
   });
 
   it('is inert for anything but a Course', () => {
-    expect(resolveCourseCompetency(false, { cuisine: ['cuisine-french'] }, loaded)).toMatchObject({ frameworkId: undefined, ready: false });
+    expect(resolveCourseCompetency(false, { cuisine: ['cuisine-french'] }, loaded)).toMatchObject({ isCourse: false, frameworkId: undefined, ready: false });
   });
 });
