@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason } from './useLibrary';
+import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason, buildCourseLibraryFilters } from './useLibrary';
 import { DEFAULT_SEARCH_FIELDS } from '../api/content';
 
 describe('buildLpLibraryFilters', () => {
@@ -112,5 +112,32 @@ describe('resolveBrowseSkills', () => {
 
   it('does not narrow the Library without a role or Prior Assessment', () => {
     expect(resolveBrowseSkills({ scope: ['Java', 'SQL'], source: 'manual' })).toEqual([]);
+  });
+});
+
+describe('buildCourseLibraryFilters', () => {
+  const terms = [
+    { identifier: 'cuisine-french', code: 'cuisine-french', name: 'French Cuisine' },
+    { identifier: 'cuisine-italian', code: 'cuisine-italian', name: 'Italian Cuisine' },
+  ];
+
+  it("matches content in the course's skill framework carrying any of its skills, under the framework's own field", () => {
+    expect(buildCourseLibraryFilters('culinary_test', 'cuisine', ['cuisine-french'], terms)).toEqual({
+      competencyFramework: ['culinary_test'],
+      cuisine: ['cuisine-french', 'French Cuisine'],
+    });
+  });
+
+  it('uses a plain "any of" list, not subsetOf, so content that also covers other skills still matches', () => {
+    const filters = buildCourseLibraryFilters('culinary_test', 'cuisine', ['cuisine-french', 'cuisine-italian'], terms);
+    expect(Array.isArray(filters.cuisine)).toBe(true);
+    expect(filters.cuisine).toEqual(['cuisine-french', 'French Cuisine', 'cuisine-italian', 'Italian Cuisine']);
+  });
+
+  it('keeps a skill the framework no longer lists as-is', () => {
+    expect(buildCourseLibraryFilters('fw', 'skill', ['retired'], terms)).toEqual({
+      competencyFramework: ['fw'],
+      skill: ['retired'],
+    });
   });
 });

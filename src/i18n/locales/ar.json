@@ -292,7 +292,14 @@
     "loadingText": "جارٍ التحميل…",
     "loadMoreText": "تحميل المزيد",
     "noContentFound": "لم يتم العثور على محتوى",
-    "tryDifferentSearch": "جرّب بحثًا أو مرشحًا مختلفًا"
+    "tryDifferentSearch": "جرّب بحثًا أو مرشحًا مختلفًا",
+    "skillFilterOnAriaLabel": "Showing content that teaches this course's skills (click to show all content)",
+    "skillFilterOffAriaLabel": "Showing all content (click to show only content that teaches this course's skills)",
+    "skillFilterOnTitle": "Matching this course's skills",
+    "skillFilterOffTitle": "All content",
+    "noSkillMatchTitle": "No content teaches this course's skills yet",
+    "noSkillMatchHint": "Content shows here once it is tagged with one of the course's skills.",
+    "showAllContent": "Show all content"
   },
   "libraryFilterPanel": {
     "boardLabel": "المجلس التعليمي",

@@ -5,6 +5,7 @@ import { useTreeStore } from '../store/tree.store';
 import { useUiStore } from '../store/ui.store';
 import { useSkillCategory } from './useSkillCategory';
 import { useLpCompetency } from './useLpCompetency';
+import { useCourseCompetency } from './useCourseCompetency';
 import { useSkillScope, type ISkillScope } from './useSkillScope';
 import { LP_COMPETENCY_FIELD } from '../utils/lpCompetency';
 import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum } from '../utils/lpStructure';
@@ -12,6 +13,26 @@ import { compositeSearch, DEFAULT_SEARCH_FIELDS } from '../api/content';
 import { skillFilterValues } from '../utils/skillTerms';
 import { LIBRARY_PRIMARY_CATEGORIES } from '../types/content';
 import type { LibraryFilters } from '../components/LibraryDock/LibraryFilterPanel';
+import type { ITerm } from '../types/framework';
+
+/**
+ * Course profile, "matching skills" view: content in the course's own skill framework that
+ * carries at least one of the course's skills. Skill codes only mean something inside their own
+ * framework, hence the framework filter. A plain array is Knowlg's "any of" (unlike the LP
+ * Level's `subsetOf`): a PDF that also covers another skill still teaches this one. Names ride
+ * along with codes so content tagged with legacy names matches too.
+ */
+export function buildCourseLibraryFilters(
+  frameworkId: string,
+  skillField: string,
+  skills: string[],
+  terms: ITerm[] | undefined,
+): Record<string, unknown> {
+  return {
+    [LP_COMPETENCY_FIELD]: [frameworkId],
+    [skillField]: skillFilterValues(skills, terms),
+  };
+}
 
 /**
  * LP profile library filters: search is strictly constrained to Courses, or
@@ -185,6 +206,10 @@ export function useLibrary() {
   const competency = editorProfile.competencyScoped && lp.frameworkId
     ? { frameworkId: lp.frameworkId, roleSkills: lp.roleSkills }
     : undefined;
+  const course = useCourseCompetency();
+  const showAll = useLibraryStore((s) => s.showAll);
+  // Narrowed to the course's skills unless the author asked for everything.
+  const courseSkillFiltered = course.ready && !showAll;
 
   const isPickingEvaluationCourse = !!activeAssessmentSlot || !!activeLevelExamTarget;
 
@@ -234,6 +259,9 @@ export function useLibrary() {
           if (advancedFilters?.gradeLevel?.length) filters['gradeLevel'] = advancedFilters.gradeLevel;
           if (advancedFilters?.subject?.length) filters['subject'] = advancedFilters.subject;
           if (advancedFilters?.primaryCategory?.length) filters['primaryCategory'] = advancedFilters.primaryCategory;
+          if (courseSkillFiltered && course.frameworkId && course.skillField) {
+            Object.assign(filters, buildCourseLibraryFilters(course.frameworkId, course.skillField, course.skills, course.terms));
+          }
         }
 
         const currentOffset = reset ? 0 : store.offset;
@@ -261,7 +289,7 @@ export function useLibrary() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allowedCategories, channel, editorProfile, activeAssessmentSlot, isPickingEvaluationCourse, browseSkills, skillCategory, lpFrameworkId, emptyReason, competency?.frameworkId, competency?.roleSkills],
+    [allowedCategories, channel, editorProfile, activeAssessmentSlot, isPickingEvaluationCourse, browseSkills, skillCategory, lpFrameworkId, emptyReason, competency?.frameworkId, competency?.roleSkills, courseSkillFiltered, course],
   );
 
   // Reset any in-progress search when the resolved framework (Curriculum)
@@ -299,6 +327,22 @@ export function useLibrary() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, browseSkills.join('|'), lpFrameworkId, selectedNodeId, competency?.frameworkId, competency?.roleSkills.join('|')]);
+
+  // Course-only: re-run when the course's skill framework or skills change, or the author flips
+  // between matching and all content. The author's search/filter/sort state is kept, since the
+  // switch narrows or widens the same browse rather than starting a new one.
+  const courseSkillsKey = course.skills.join('|');
+  const courseEffectMounted = useRef(false);
+  useEffect(() => {
+    // The channel/profile effect above already ran the first load.
+    if (!courseEffectMounted.current) {
+      courseEffectMounted.current = true;
+      return;
+    }
+    if (editorProfile.competencyScoped) return;
+    load(store.searchQuery, store.activeFilter, store.advancedFilters, true, store.sortAZ);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [course.ready, course.frameworkId, course.skillField, courseSkillsKey, showAll]);
 
   const search = useCallback(
     (query: string) => {
@@ -367,5 +411,10 @@ export function useLibrary() {
     // show a guiding message instead of the generic "no results" state.
     emptyReason,
     roleSkills: competency?.roleSkills ?? EMPTY_SKILLS,
+    // Course profile only — whether the course has skills to match content against, and whether
+    // the Library is currently narrowed to them (drives the dock's toggle and empty state).
+    canFilterBySkills: course.ready,
+    skillFiltered: courseSkillFiltered,
+    setShowAll: store.setShowAll,
   };
 }

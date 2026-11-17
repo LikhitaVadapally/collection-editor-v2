@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X } from 'lucide-react';
+import { Search, Library, SlidersHorizontal, ArrowUpAZ, Clock, PanelRightClose, Info, X, Target } from 'lucide-react';
 import type { EditorMode } from '../../types/editor';
 import type { IContent } from '../../types/content';
 import { CT_FILTERS } from '../../types/content';
@@ -60,6 +60,9 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
     loadMore,
     activeAssessmentSlot,
     emptyReason,
+    canFilterBySkills,
+    skillFiltered,
+    setShowAll,
   } = useLibrary();
 
   const { addResource, selectedNodeId, treeData, treeCache } = useTreeStore();
@@ -336,6 +339,20 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
         >
           {sortAZ ? <ArrowUpAZ size={15} /> : <Clock size={15} />}
         </button>
+        {/* Course only: narrow to content teaching the course's skills (default) or show all. */}
+        {canFilterBySkills && (
+          <button
+            type="button"
+            className={[styles.filterToggleBtn, skillFiltered ? styles.filterToggleBtnActive : ''].join(' ')}
+            onClick={() => setShowAll(skillFiltered)}
+            aria-label={skillFiltered ? lbl.libraryDock.skillFilterOnAriaLabel : lbl.libraryDock.skillFilterOffAriaLabel}
+            aria-pressed={skillFiltered}
+            title={skillFiltered ? lbl.libraryDock.skillFilterOnTitle : lbl.libraryDock.skillFilterOffTitle}
+            data-testid="library-skill-filter-toggle"
+          >
+            <Target size={15} />
+          </button>
+        )}
         {/* Advanced filters (board/medium/gradeLevel/subject/...) don't apply
             to LP's Course-only, skill-scoped search — see buildLpLibraryFilters. */}
         {!isLearningPath && (
@@ -428,6 +445,18 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
                 <>
                   <p>{lbl.learningPath.noCurriculumEmptyTitle}</p>
                   <span>{lbl.learningPath.noCurriculumEmptyHint}</span>
+                </>
+              ) : skillFiltered ? (
+                <>
+                  <p>{lbl.libraryDock.noSkillMatchTitle}</p>
+                  <span>{lbl.libraryDock.noSkillMatchHint}</span>
+                  <button
+                    type="button"
+                    className={styles.emptyAction}
+                    onClick={() => setShowAll(true)}
+                  >
+                    {lbl.libraryDock.showAllContent}
+                  </button>
                 </>
               ) : (
                 <>

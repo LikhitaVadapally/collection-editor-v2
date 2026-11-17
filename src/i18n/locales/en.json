@@ -292,7 +292,14 @@
     "loadingText": "Loading…",
     "loadMoreText": "Load More",
     "noContentFound": "No content found",
-    "tryDifferentSearch": "Try a different search or filter"
+    "tryDifferentSearch": "Try a different search or filter",
+    "skillFilterOnAriaLabel": "Showing content that teaches this course's skills (click to show all content)",
+    "skillFilterOffAriaLabel": "Showing all content (click to show only content that teaches this course's skills)",
+    "skillFilterOnTitle": "Matching this course's skills",
+    "skillFilterOffTitle": "All content",
+    "noSkillMatchTitle": "No content teaches this course's skills yet",
+    "noSkillMatchHint": "Content shows here once it is tagged with one of the course's skills.",
+    "showAllContent": "Show all content"
   },
   "libraryFilterPanel": {
     "boardLabel": "Board",
