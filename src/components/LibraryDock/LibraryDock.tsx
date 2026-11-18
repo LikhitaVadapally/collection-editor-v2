@@ -62,6 +62,10 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
     emptyReason,
     skillMatched,
     otherContent,
+    otherTotal,
+    otherLoading,
+    otherHasMore,
+    loadMoreOther,
     courseHint,
   } = useLibrary();
   // Course: "Other content" starts collapsed so the skill-matched content leads.
@@ -280,7 +284,7 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
 
   // Course with skills: what the browse finds that teaches none of them — apart and collapsed, so the
   // author can still add it.
-  const renderOtherContent = () => (skillMatched && otherContent.length > 0 ? (
+  const renderOtherContent = () => (skillMatched && otherTotal > 0 ? (
     <div className={styles.otherContent} data-testid="library-other-content">
       <button
         type="button"
@@ -289,7 +293,7 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
         aria-expanded={othersOpen}
       >
         {othersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span>{lbl.libraryDock.otherContentHeading.replace('{count}', String(otherContent.length))}</span>
+        <span>{lbl.libraryDock.otherContentHeading.replace('{count}', String(otherTotal))}</span>
       </button>
       {othersOpen && (
         <>
@@ -304,6 +308,17 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
               isAdded={addedIds.has(item.identifier)}
             />
           ))}
+          {otherHasMore && (
+            <button
+              type="button"
+              className={styles.loadMoreBtn}
+              onClick={loadMoreOther}
+              disabled={otherLoading}
+              aria-label={lbl.libraryDock.loadMoreAriaLabel}
+            >
+              {otherLoading ? lbl.libraryDock.loadingText : lbl.libraryDock.loadMoreText}
+            </button>
+          )}
         </>
       )}
     </div>

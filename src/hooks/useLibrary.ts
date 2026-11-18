@@ -35,27 +35,18 @@ export function buildCourseLibraryFilters(
 }
 
 /**
- * Course profile, "Other content" section: what the same browse returns WITHOUT the skill filter,
- * less anything the first section already holds or that teaches one of the course's skills (the
- * first section can be paged, so its loaded cards alone don't cover every match). Composite search
- * can't say "NOT any of", hence the client-side pass.
+ * Course profile, "Other content" section: the same browse with content tagged with any of the
+ * course's skills left out. Knowlg's `{ "!=": [...] }` means "none of" and keeps content with no
+ * tag at all, so the exclusion happens in the search: the section pages like the main list and
+ * its count is the real total. Skill codes are framework-specific, so the skill field alone is
+ * enough to tell a match apart.
  */
-export function selectOtherContent(
-  others: IContent[],
-  shownIds: Set<string>,
-  frameworkId: string,
+export function buildOtherContentFilters(
+  browseFilters: Record<string, unknown>,
   skillField: string,
   matchValues: string[],
-): IContent[] {
-  const match = new Set(matchValues);
-  return others.filter((c) => {
-    if (shownIds.has(c.identifier)) return false;
-    const meta = c as unknown as Record<string, unknown>;
-    if (meta[LP_COMPETENCY_FIELD] !== frameworkId) return true;
-    const tags = meta[skillField];
-    const list = Array.isArray(tags) ? tags : typeof tags === 'string' ? [tags] : [];
-    return !list.some((t) => match.has(String(t)));
-  });
+): Record<string, unknown> {
+  return { ...browseFilters, [skillField]: { '!=': matchValues } };
 }
 
 /**
@@ -165,9 +156,15 @@ export function resolveBrowseSkills(scope: ISkillScope): string[] {
 
 const PAGE_SIZE = 20;
 const EMPTY_SKILLS: string[] = [];
-/** One page is enough for the collapsed "Other content" section; search narrows it further. */
-const OTHER_CONTENT_LIMIT = 50;
 const NO_ITEMS: IContent[] = [];
+
+/** The browse "Other content" pages through: set by each new main-list browse, reused by its Load more. */
+interface IOtherBrowse {
+  filters: Record<string, unknown>;
+  query: string;
+  sortBy: Record<string, string>;
+  fields: string[] | undefined;
+}
 
 /**
  * Returns allowed primaryCategory values for the currently selected unit,
@@ -245,6 +242,43 @@ export function useLibrary() {
   // Course with skills: the main list is narrowed to them, and the rest sits in "Other content".
   const courseSkillFiltered = course.ready;
   const [otherContent, setOtherContent] = useState<IContent[]>(NO_ITEMS);
+  const [otherTotal, setOtherTotal] = useState(0);
+  const [otherLoading, setOtherLoading] = useState(false);
+  const otherBrowse = useRef<IOtherBrowse | null>(null);
+  // Bumped by every new browse, so a slow page of an older one can't land in the current list.
+  const otherSeq = useRef(0);
+
+  const clearOther = () => {
+    otherSeq.current += 1;
+    otherBrowse.current = null;
+    setOtherContent(NO_ITEMS);
+    setOtherTotal(0);
+    setOtherLoading(false);
+  };
+
+  // One page of "Other content": the first replaces the list, later ones (Load more) append.
+  const fetchOtherPage = async (browse: IOtherBrowse, offset: number) => {
+    const seq = ++otherSeq.current;
+    setOtherLoading(true);
+    try {
+      const { content, count } = await compositeSearch({
+        filters: browse.filters,
+        query: browse.query,
+        limit: PAGE_SIZE,
+        offset,
+        channel: channel || undefined,
+        sortBy: browse.sortBy,
+        fields: browse.fields,
+      });
+      if (seq !== otherSeq.current) return;
+      setOtherContent((prev) => (offset === 0 ? content : [...prev, ...content.filter((c) => !prev.some((p) => p.identifier === c.identifier))]));
+      setOtherTotal(count);
+    } catch (e) {
+      console.error('[useLibrary] other content load error:', e);
+    } finally {
+      if (seq === otherSeq.current) setOtherLoading(false);
+    }
+  };
 
   const isPickingEvaluationCourse = !!activeAssessmentSlot || !!activeLevelExamTarget;
 
@@ -270,7 +304,7 @@ export function useLibrary() {
         // emptyReason above for why each case applies).
         if (emptyReason) {
           store.setContent([], 0);
-          setOtherContent(NO_ITEMS);
+          clearOther();
           return;
         }
         let filters: Record<string, unknown>;
@@ -322,22 +356,21 @@ export function useLibrary() {
           store.appendContent(content, count);
         }
 
-        // "Load more" only pages the main list; the other section is refetched with each new browse.
-        if (!skillMatch || !course.frameworkId || !course.skillField) {
-          if (reset) setOtherContent(NO_ITEMS);
-        } else if (reset) {
-          const others = await compositeSearch({
-            filters: unskilledFilters,
-            query,
-            limit: OTHER_CONTENT_LIMIT,
-            offset: 0,
-            channel: channel || undefined,
-            sortBy,
-            fields: [...DEFAULT_SEARCH_FIELDS, course.skillField, LP_COMPETENCY_FIELD],
-          });
-          const shown = new Set(content.map((c) => c.identifier));
-          const matchValues = skillMatch[course.skillField] as string[];
-          setOtherContent(selectOtherContent(others.content, shown, course.frameworkId, course.skillField, matchValues));
+        // A new browse restarts "Other content" from its first page; the main list's Load more
+        // leaves it alone (it pages itself through loadMoreOther).
+        if (reset) {
+          if (!skillMatch || !course.skillField) {
+            clearOther();
+          } else {
+            const browse: IOtherBrowse = {
+              filters: buildOtherContentFilters(unskilledFilters, course.skillField, skillMatch[course.skillField] as string[]),
+              query,
+              sortBy,
+              fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
+            };
+            otherBrowse.current = browse;
+            await fetchOtherPage(browse, 0);
+          }
         }
 
       } catch (e) {
@@ -447,6 +480,13 @@ export function useLibrary() {
 
   const hasMore = store.allContent.length < store.totalCount;
 
+  const loadMoreOther = useCallback(() => {
+    const browse = otherBrowse.current;
+    if (!browse || otherLoading) return;
+    void fetchOtherPage(browse, otherContent.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otherLoading, otherContent.length, channel]);
+
   return {
     content: store.filteredContent,
     isLoading: store.isLoading,
@@ -473,6 +513,10 @@ export function useLibrary() {
     // otherContent the rest; without, a hint to pick them.
     skillMatched: courseSkillFiltered,
     otherContent,
+    otherTotal,
+    otherLoading,
+    otherHasMore: otherContent.length < otherTotal,
+    loadMoreOther,
     courseHint: courseLibraryHint(course),
   };
 }

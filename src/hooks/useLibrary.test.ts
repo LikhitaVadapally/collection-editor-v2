@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason, buildCourseLibraryFilters, selectOtherContent, courseLibraryHint } from './useLibrary';
+import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason, buildCourseLibraryFilters, buildOtherContentFilters, courseLibraryHint } from './useLibrary';
 import { DEFAULT_SEARCH_FIELDS } from '../api/content';
 
 describe('buildLpLibraryFilters', () => {
@@ -142,31 +142,21 @@ describe('buildCourseLibraryFilters', () => {
   });
 });
 
-describe('selectOtherContent', () => {
-  const item = (identifier: string, meta: Record<string, unknown> = {}) =>
-    ({ identifier, name: identifier, mimeType: 'application/pdf', ...meta }) as never;
-  const match = ['cuisine-french', 'French Cuisine'];
+describe('buildOtherContentFilters', () => {
+  const browse = { status: ['Live'], primaryCategory: ['Explanation Content'] };
 
-  it('drops what the first section already shows', () => {
-    const out = selectOtherContent([item('a'), item('b')], new Set(['a']), 'culinary_test', 'cuisine', match);
-    expect(out.map((c: { identifier: string }) => c.identifier)).toEqual(['b']);
+  it("keeps the browse and leaves out content tagged with any of the course's skills", () => {
+    expect(buildOtherContentFilters(browse, 'cuisine', ['cuisine-french', 'French Cuisine'])).toEqual({
+      status: ['Live'],
+      primaryCategory: ['Explanation Content'],
+      cuisine: { '!=': ['cuisine-french', 'French Cuisine'] },
+    });
   });
 
-  it("drops content that teaches one of the course's skills, even when the first section is still paged", () => {
-    const out = selectOtherContent([
-      item('code', { competencyFramework: 'culinary_test', cuisine: ['cuisine-french'] }),
-      item('legacy-name', { competencyFramework: 'culinary_test', cuisine: 'French Cuisine' }),
-      item('other-skill', { competencyFramework: 'culinary_test', cuisine: ['cuisine-italian'] }),
-    ], new Set(), 'culinary_test', 'cuisine', match);
-    expect(out.map((c: { identifier: string }) => c.identifier)).toEqual(['other-skill']);
-  });
-
-  it('keeps content from another framework or with no skill tags', () => {
-    const out = selectOtherContent([
-      item('other-fw', { competencyFramework: 'fw_health', cuisine: ['cuisine-french'] }),
-      item('untagged'),
-    ], new Set(), 'culinary_test', 'cuisine', match);
-    expect(out.map((c: { identifier: string }) => c.identifier)).toEqual(['other-fw', 'untagged']);
+  it("doesn't touch the browse it was given", () => {
+    const filters = { ...browse };
+    buildOtherContentFilters(filters, 'skill', ['a']);
+    expect(filters).toEqual(browse);
   });
 });
 
