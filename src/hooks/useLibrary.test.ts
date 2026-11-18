@@ -50,6 +50,14 @@ describe('buildLpLibraryFilters', () => {
 });
 
 describe('buildSearchFields', () => {
+  it("asks a Course's search for each item's skill framework and skill field (positive)", () => {
+    expect(buildSearchFields(false, undefined, 'cuisine')).toEqual([...DEFAULT_SEARCH_FIELDS, 'cuisine', 'competencyFramework']);
+  });
+
+  it('keeps the default fields for a collection with no skill framework (negative)', () => {
+    expect(buildSearchFields(false, undefined, undefined)).toBeUndefined();
+  });
+
   it('appends the resolved skill-category code, framework and competencyFramework for the LP profile', () => {
     expect(buildSearchFields(true, 'skill')).toEqual([...DEFAULT_SEARCH_FIELDS, 'skill', 'framework', 'competencyFramework']);
   });

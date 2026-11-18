@@ -9,6 +9,8 @@ import { useEditorStore } from '../../store/editor.store';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useLpCompetency } from '../../hooks/useLpCompetency';
 import { skillLabel } from '../../utils/skillTerms';
+import { useCourseCompetency } from '../../hooks/useCourseCompetency';
+import { cardCaption, courseSkillTags, type ISkillTag } from '../../utils/libraryCardMeta';
 import styles from './LibraryCard.module.scss';
 
 const CT_ICONS: Record<string, React.ElementType> = {
@@ -42,7 +44,8 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
   const competencyScoped = useEditorStore(s => s.editorProfile.competencyScoped);
   const skillCategory = useSkillCategory();
   const { roleSkills } = useLpCompetency();
-  const skillTags = competencyScoped && skillCategory
+  const course = useCourseCompetency();
+  const lpSkillTags: ISkillTag[] = competencyScoped && skillCategory
     ? (() => {
         const raw = (item as unknown as Record<string, unknown>)[skillCategory.code];
         const values = Array.isArray(raw) ? raw as string[] : raw ? [String(raw)] : [];
@@ -50,9 +53,12 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
         const wanted = new Set(roleSkills);
         const ordered = [...values.filter(v => wanted.has(String(v))), ...values.filter(v => !wanted.has(String(v)))];
         // Stored as term codes (or legacy names) — show the term name.
-        return Array.from(new Set(ordered.map(v => skillLabel(String(v), skillCategory.terms))));
+        return Array.from(new Set(ordered.map(v => skillLabel(String(v), skillCategory.terms))))
+          .map(label => ({ label, matched: false }));
       })()
     : [];
+  // A Course's library: the item's skills in the course's own framework, the course's skills first.
+  const skillTags = competencyScoped ? lpSkillTags : courseSkillTags(item as unknown as Record<string, unknown>, course);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: item.identifier,
@@ -87,16 +93,16 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
       {/* Info */}
       <div className={styles.info}>
         <span className={styles.name} title={item.name}>{item.name}</span>
-        <span className={styles.meta}>
-          {item.organisation?.[0] ?? item.channel ?? ''}
-          {item.organisation?.[0] && item.primaryCategory ? ' · ' : ''}
-          {item.primaryCategory ?? ''}
-        </span>
+        <span className={styles.meta}>{cardCaption(item)}</span>
         {skillTags.length > 0 && (
           <span className={styles.skillTags}>
-            {skillTags.slice(0, 3).map(t => <span key={t} className={styles.skillTag}>{t}</span>)}
+            {skillTags.slice(0, 3).map(t => (
+              <span key={t.label} className={[styles.skillTag, t.matched ? styles.skillTagMatched : ''].filter(Boolean).join(' ')}>
+                {t.label}
+              </span>
+            ))}
             {skillTags.length > 3 && (
-              <span className={styles.skillTag} title={skillTags.slice(3).join(', ')}>
+              <span className={styles.skillTag} title={skillTags.slice(3).map(t => t.label).join(', ')}>
                 {lbl.libraryCard.moreSkills.replace('{count}', String(skillTags.length - 3))}
               </span>
             )}

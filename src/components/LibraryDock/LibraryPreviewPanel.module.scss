@@ -212,3 +212,25 @@
   border-radius: 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
 }
+
+// The item's skills in the course's framework; the course's own ones highlighted.
+.skillTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.skillTag {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: var(--sbx-r-xl);
+  background: var(--sbx-gray-100);
+  color: var(--sbx-gray-600);
+}
+
+.skillTagMatched {
+  background: var(--sbx-primary-light);
+  color: var(--sbx-primary-dark);
+  font-weight: 600;
+}

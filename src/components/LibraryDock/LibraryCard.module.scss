@@ -73,6 +73,13 @@
   color: var(--sbx-gray-600);
 }
 
+// One of the course's own skills.
+.skillTagMatched {
+  background: var(--sbx-primary-light);
+  color: var(--sbx-primary-dark);
+  font-weight: 600;
+}
+
 .addBtn {
   flex-shrink: 0;
   display: flex;

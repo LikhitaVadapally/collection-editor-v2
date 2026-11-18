@@ -113,7 +113,11 @@ export function buildLpLibraryFilters(
 export function buildSearchFields(
   competencyScoped: boolean,
   skillCategoryCode: string | undefined,
+  courseSkillField?: string,
 ): string[] | undefined {
+  // A Course with a skill framework: each item's framework and skill tags ride along so its card
+  // can show the skills it teaches.
+  if (!competencyScoped && courseSkillField) return [...DEFAULT_SEARCH_FIELDS, courseSkillField, LP_COMPETENCY_FIELD];
   if (!competencyScoped || !skillCategoryCode) return undefined;
   // 'framework' rides along so a linked course knows which taxonomy its
   // skill tags live under (useSkillCategory resolves via the prior course's
@@ -347,7 +351,7 @@ export function useLibrary() {
           offset: currentOffset,
           channel: channel || undefined,
           sortBy,
-          fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
+          fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code, course.skillField),
         });
 
         if (reset) {
@@ -366,7 +370,7 @@ export function useLibrary() {
               filters: buildOtherContentFilters(unskilledFilters, course.skillField, skillMatch[course.skillField] as string[]),
               query,
               sortBy,
-              fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code),
+              fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code, course.skillField),
             };
             otherBrowse.current = browse;
             await fetchOtherPage(browse, 0);

@@ -8,6 +8,8 @@ import { CourseDetailsPanel } from '../shared/CourseDetailsPanel';
 import { useLabels } from '../../hooks/useLabels';
 import { useEditorStore } from '../../store/editor.store';
 import { useLibraryTargetLabel } from '../../hooks/useLibraryTargetLabel';
+import { useCourseCompetency } from '../../hooks/useCourseCompetency';
+import { cardCaption, courseSkillTags } from '../../utils/libraryCardMeta';
 import styles from './LibraryPreviewPanel.module.scss';
 
 const QUESTIONSET_MIME = 'application/vnd.sunbird.questionset';
@@ -33,12 +35,12 @@ export const LibraryPreviewPanel: React.FC<LibraryPreviewPanelProps> = ({
   const isEditable = editorMode === 'edit';
   const competencyScoped = useEditorStore(s => s.editorProfile.competencyScoped);
   const targetLabel = useLibraryTargetLabel();
+  const course = useCourseCompetency();
   if (!content) return null;
+  const skillTags = competencyScoped ? [] : courseSkillTags(content as unknown as Record<string, unknown>, course);
 
   const isCourse = competencyScoped && content.primaryCategory === 'Course';
-  const meta = [content.organisation?.[0] ?? content.channel ?? '', content.primaryCategory ?? '']
-    .filter(Boolean)
-    .join(' • ');
+  const meta = cardCaption(content);
 
   // Convert IContent to INode — ContentPlayer fetches full details by identifier
   const node: INode = {
@@ -76,6 +78,15 @@ export const LibraryPreviewPanel: React.FC<LibraryPreviewPanelProps> = ({
               {content.name}
             </span>
             {isCourse && meta && <span className={styles.courseMeta}>{meta}</span>}
+            {skillTags.length > 0 && (
+              <span className={styles.skillTags}>
+                {skillTags.map(t => (
+                  <span key={t.label} className={[styles.skillTag, t.matched ? styles.skillTagMatched : ''].filter(Boolean).join(' ')}>
+                    {t.label}
+                  </span>
+                ))}
+              </span>
+            )}
           </div>
           <div className={styles.headerActions}>
             <button
