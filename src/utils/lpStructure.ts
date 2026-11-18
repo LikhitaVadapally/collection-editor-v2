@@ -4,7 +4,7 @@ import type { ITerm } from '../types/framework';
 import { skillLabel, toSkillCodes } from './skillTerms';
 // lpCompetency imports isAssessmentLevel from here; the cycle is safe because both sides only
 // call each other's functions at run time, never at module load.
-import { courseSkills, coursesOutsideRole, roleSkillsNotTaught } from './lpCompetency';
+import { courseSkills, coursesOutsideRole, roleSkillsNotTaught, skillsOutsideRole } from './lpCompetency';
 
 export const EVALUATION_COURSE_CATEGORY = 'Evaluation Course';
 
@@ -63,6 +63,12 @@ export type LevelRole = 'pre' | 'post' | 'levelAssessment' | 'content';
 export function isAssessmentLevel(level: INode | undefined): boolean {
   const children = level?.children ?? [];
   return children.length === 1 && !!children[0]?.metadata?.['isAssessmentCourse'];
+}
+
+/** The Prior Assessment course: the one course of the first Level, when that is an assessment Level. */
+export function getPriorAssessmentCourse(root: INode | undefined): INode | undefined {
+  const preLevel = root?.children?.[0];
+  return isAssessmentLevel(preLevel) ? preLevel?.children?.[0] : undefined;
 }
 
 /** The at-most-one Level Exam course linked directly to a content Level, if
@@ -506,15 +512,14 @@ export function validateLearningPathStructure(
   }
 
   if (roleSkills.length > 0) {
-    for (const course of coursesOutsideRole(root, roleSkills, skillCategoryCode)) {
-      const outside = courseSkills(course, skillCategoryCode).filter((sk) => !roleSkills.includes(sk));
-      if (outside.length === 0) continue; // untagged: courseMissingSkillTag above already says so
+    for (const course of coursesOutsideRole(root, roleSkills, skillCategoryCode, skillTerms)) {
+      const outside = skillsOutsideRole(courseSkills(course, skillCategoryCode, skillTerms), roleSkills);
       issues.push({
         code: 'courseOutsideRole', nodeId: course.id,
         message: `"${course.name}" teaches skills outside the target role: ${labels(outside)}. Remove it from the path.`,
       });
     }
-    const notTaught = roleSkillsNotTaught(root, roleSkills, skillCategoryCode);
+    const notTaught = roleSkillsNotTaught(root, roleSkills, skillCategoryCode, skillTerms);
     if (notTaught.length > 0) {
       issues.push({
         code: 'roleSkillsNotTaught',

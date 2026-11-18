@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useEditorStore } from '../store/editor.store';
 import { useTreeStore } from '../store/tree.store';
 import { useCompetencySkills } from './useCompetencyFrameworks';
-import { courseSkills, getLpCompetencyFramework } from '../utils/lpCompetency';
+import { courseSkills, getRootCompetencyFramework } from '../utils/lpCompetency';
 import type { INode } from '../types/editor';
 import type { ITerm } from '../types/framework';
 
@@ -38,7 +38,7 @@ function effectiveRootMeta(
  * Whether the tree being edited is a Course — not a Learning Path, an Evaluation Course or any
  * other collection. Only a Course narrows its Library to the content that teaches its skills.
  */
-export function isCourseRoot(
+export function isPlainCourseRoot(
   profileKey: string,
   rootMeta: Record<string, unknown>,
   configPrimaryCategory: string | undefined,
@@ -55,13 +55,12 @@ export function isCourseRoot(
 export function resolveCourseCompetency(
   isCourse: boolean,
   rootMeta: Record<string, unknown>,
-  loaded: { frameworkId: string | undefined; skillField: string | undefined; terms: ITerm[]; isLoaded: boolean },
+  loaded: { usableFrameworkId: string | undefined; skillField: string | undefined; terms: ITerm[] },
 ): ICourseCompetency {
   if (!isCourse) return INERT;
-  const { frameworkId: stored, skillField, terms, isLoaded } = loaded;
-  const frameworkId = stored && isLoaded && terms.length > 0 ? stored : undefined;
+  const { usableFrameworkId: frameworkId, skillField, terms } = loaded;
   if (!frameworkId || !skillField) return { ...INERT, isCourse: true };
-  const skills = courseSkills(rootMeta, skillField);
+  const skills = courseSkills(rootMeta, skillField, terms);
   return { isCourse: true, frameworkId, skillField, skills, terms, ready: skills.length > 0 };
 }
 
@@ -74,16 +73,11 @@ export function useCourseCompetency(): ICourseCompetency {
   const root = useTreeStore((s) => s.treeData[0]);
   const treeCache = useTreeStore((s) => s.treeCache);
   const rootMeta = useMemo(() => effectiveRootMeta(root, treeCache), [root, treeCache]);
-  const isCourse = isCourseRoot(profileKey, rootMeta, configPrimaryCategory);
-  const stored = isCourse ? getLpCompetencyFramework(root, treeCache) : undefined;
+  const isCourse = isPlainCourseRoot(profileKey, rootMeta, configPrimaryCategory);
+  const stored = isCourse ? getRootCompetencyFramework(root, treeCache) : undefined;
 
-  const { skills, skillField, isLoaded } = useCompetencySkills(stored);
-  const terms = useMemo<ITerm[]>(
-    () => skills.map((sk) => ({ identifier: sk.code, code: sk.code, name: sk.name })),
-    [skills],
-  );
-
-  const resolved = resolveCourseCompetency(isCourse, rootMeta, { frameworkId: stored, skillField, terms, isLoaded });
+  const { usableFrameworkId, skillField, terms } = useCompetencySkills(stored);
+  const resolved = resolveCourseCompetency(isCourse, rootMeta, { usableFrameworkId, skillField, terms });
   const skillsKey = resolved.skills.join('|');
   // Stable identity across renders while nothing relevant changed, so effects keyed on it don't loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cardCaption, courseSkillTags } from './libraryCardMeta';
+import { cardCaption, courseSkillTags, skillTags } from './libraryCardMeta';
 import type { ITerm } from '../types/framework';
 
 const terms = [
@@ -39,5 +39,23 @@ describe('courseSkillTags', () => {
     expect(courseSkillTags({ competencyFramework: 'culinary_test', skill: ['crop-survey'] }, course)).toEqual([]);
     expect(courseSkillTags({ competencyFramework: 'agro', skill: ['crop-survey'] }, { ...course, frameworkId: undefined })).toEqual([]);
     expect(courseSkillTags({ competencyFramework: 'agro' }, course)).toEqual([]);
+  });
+});
+
+describe('skillTags', () => {
+  const terms = [
+    { identifier: 'crop-survey', code: 'crop-survey', name: 'Crop Survey' },
+    { identifier: 'soil-sampling', code: 'soil-sampling', name: 'Soil Sampling' },
+  ];
+
+  it('lists the wanted skills first and marks them, matching a legacy name to its code', () => {
+    expect(skillTags(['soil-sampling', 'Crop Survey'], ['crop-survey'], terms)).toEqual([
+      { label: 'Crop Survey', matched: true },
+      { label: 'Soil Sampling', matched: false },
+    ]);
+  });
+
+  it('shows one chip per skill whether tagged by code or name', () => {
+    expect(skillTags(['crop-survey', 'Crop Survey'], [], terms)).toEqual([{ label: 'Crop Survey', matched: false }]);
   });
 });

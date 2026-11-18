@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTreeStore } from '../store/tree.store';
-import { isAssessmentLevel } from '../utils/lpStructure';
+import { getPriorAssessmentCourse } from '../utils/lpStructure';
 import { useSkillCategory, type ISkillCategory } from './useSkillCategory';
 import { useLpCompetency } from './useLpCompetency';
 import { toSkillCodes } from '../utils/skillTerms';
@@ -31,10 +31,7 @@ export function resolveSkillScope(
   const manual: ISkillScope = { scope: (skillCategory?.terms ?? []).map((t) => t.code), source: 'manual' };
   if (!skillCategory) return manual;
 
-  const preLevel = rootNode?.children?.[0];
-  if (!isAssessmentLevel(preLevel)) return manual;
-
-  const priorCourse = preLevel?.children?.[0];
+  const priorCourse = getPriorAssessmentCourse(rootNode);
   if (!priorCourse) return manual;
   const cached = treeCache[priorCourse.id]?.[skillCategory.code] as string[] | undefined;
   const raw = (cached ?? priorCourse.metadata?.[skillCategory.code]) as string[] | string | undefined;

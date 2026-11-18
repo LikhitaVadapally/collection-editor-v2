@@ -11,7 +11,7 @@
  * only and never offered.
  */
 
-export interface CompetencyTermWire {
+interface CompetencyTermWire {
   identifier?: string;
   code?: string;
   name?: string;
@@ -34,7 +34,7 @@ export interface CompetencySkill {
   name: string;
 }
 
-/** The skill category: the last one by `index`, position breaking the tie for a missing index. */
+/** The skill category: the last one by `index`; a category without one sorts by its position instead. */
 function skillCategory(categories: CompetencyCategoryWire[] | undefined): CompetencyCategoryWire | undefined {
   const ordered = (categories ?? [])
     .map((c, pos) => ({ c, key: typeof c.index === 'number' ? c.index : pos }))
@@ -51,9 +51,12 @@ function flatten(terms: CompetencyTermWire[]): CompetencyTermWire[] {
   return terms.flatMap((t) => [t, ...flatten(t.children ?? [])]);
 }
 
-/** Skill codes, sorted. Empty when the framework has no categories or its last one has no terms. */
-export function competencyLeafCodes(categories: CompetencyCategoryWire[] | undefined): string[] {
-  const all = flatten(skillCategory(categories)?.terms ?? []);
+/** Every term of the skill category, nested ones included. */
+function skillTerms(categories: CompetencyCategoryWire[] | undefined): CompetencyTermWire[] {
+  return flatten(skillCategory(categories)?.terms ?? []);
+}
+
+function leafCodesOf(all: CompetencyTermWire[]): string[] {
   const codes = new Set(all.map((t) => t.code).filter((c): c is string => Boolean(c)));
   const parents = new Set(
     all
@@ -66,13 +69,19 @@ export function competencyLeafCodes(categories: CompetencyCategoryWire[] | undef
   return [...new Set(leaves)].sort();
 }
 
+/** Skill codes, sorted. Empty when the framework has no categories or its last one has no terms. */
+export function competencyLeafCodes(categories: CompetencyCategoryWire[] | undefined): string[] {
+  return leafCodesOf(skillTerms(categories));
+}
+
 /** Skills with their authored names, sorted by name. */
 export function competencyLeafSkills(categories: CompetencyCategoryWire[] | undefined): CompetencySkill[] {
+  const all = skillTerms(categories);
   const names = new Map<string, string>();
-  flatten(skillCategory(categories)?.terms ?? []).forEach((t) => {
+  all.forEach((t) => {
     if (t.code && t.name && !names.has(t.code)) names.set(t.code, t.name);
   });
-  return competencyLeafCodes(categories)
+  return leafCodesOf(all)
     .map((code) => ({ code, name: names.get(code) ?? code }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

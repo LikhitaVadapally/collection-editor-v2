@@ -3,7 +3,8 @@ import { useEditorStore } from '../store/editor.store';
 import { useTreeStore } from '../store/tree.store';
 import { useFramework } from './useFramework';
 import { useLpCompetency } from './useLpCompetency';
-import { SKILL_FIELD } from '../utils/lpCompetency';
+import { useCompetencyFrameworks } from './useCompetencyFrameworks';
+import { SKILL_FIELD, getRootCompetencyFramework } from '../utils/lpCompetency';
 import { isAssessmentLevel } from '../utils/lpStructure';
 import type { ICategory, ITerm } from '../types/framework';
 import type { INode } from '../types/editor';
@@ -49,6 +50,25 @@ export function resolvePriorCourseFramework(rootNode: INode | undefined): string
   return Array.isArray(fw) ? (fw[0] as string | undefined) : (fw as string | undefined);
 }
 
+/**
+ * Which skill category an LP uses. Its competency framework's, once that has loaded with skills;
+ * none while a stored competency framework is still loading or failed to load, so nothing reads or
+ * writes skills under a guessed field; the curriculum's otherwise (no competency framework stored,
+ * or a stored id that isn't one of the channel's competency frameworks, such as a legacy `NCF`).
+ */
+export function pickSkillCategory(args: {
+  competency: ISkillCategory | null;
+  storedFramework: string | undefined;
+  channelFrameworks: string[] | undefined;
+  curriculum: ISkillCategory | null;
+}): ISkillCategory | null {
+  const { competency, storedFramework, channelFrameworks, curriculum } = args;
+  if (competency) return competency;
+  if (!storedFramework) return curriculum;
+  const isCompetency = !channelFrameworks || channelFrameworks.includes(storedFramework);
+  return isCompetency ? null : curriculum;
+}
+
 export function useSkillCategory(): ISkillCategory | null {
   const config = useEditorStore((s) => s.editorConfig);
   const contentFramework = useEditorStore((s) => s.contentFramework);
@@ -61,10 +81,25 @@ export function useSkillCategory(): ISkillCategory | null {
   // An LP scoped by a competency framework tags with its skills under that framework's skill field
   // (its last category code — what lern reads), not the curriculum framework's skill category.
   const lp = useLpCompetency();
+  const isLearningPath = useEditorStore((s) => s.editorProfile.key === 'learningPath');
+  const treeCache = useTreeStore((s) => s.treeCache);
+  const storedFramework = isLearningPath ? getRootCompetencyFramework(treeData[0], treeCache) : undefined;
+  const channel = config?.context?.channel as string | undefined;
+  const { frameworks, isLoaded: listLoaded } = useCompetencyFrameworks(channel, !!storedFramework);
   const curriculumSkills = resolveSkillCategory(organisationFramework?.categories);
+  const channelFrameworks = useMemo(
+    () => (listLoaded ? frameworks.map((f) => f.identifier) : undefined),
+    [listLoaded, frameworks],
+  );
   return useMemo(
-    () => (lp.frameworkId ? { code: lp.skillField ?? SKILL_FIELD, terms: lp.terms } : curriculumSkills),
+    () => pickSkillCategory({
+      competency: lp.frameworkId ? { code: lp.skillField ?? SKILL_FIELD, terms: lp.terms } : null,
+      storedFramework,
+      channelFrameworks,
+      curriculum: curriculumSkills,
+    }),
+    // Keyed on the primitive parts: curriculumSkills is a fresh object every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lp.frameworkId, lp.skillField, lp.terms, curriculumSkills?.code, curriculumSkills?.terms],
+    [lp.frameworkId, lp.skillField, lp.terms, storedFramework, channelFrameworks, curriculumSkills?.code, curriculumSkills?.terms],
   );
 }

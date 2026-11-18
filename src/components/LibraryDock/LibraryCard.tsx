@@ -8,9 +8,8 @@ import { useLabels } from '../../hooks/useLabels';
 import { useEditorStore } from '../../store/editor.store';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useLpCompetency } from '../../hooks/useLpCompetency';
-import { skillLabel } from '../../utils/skillTerms';
 import { useCourseCompetency } from '../../hooks/useCourseCompetency';
-import { cardCaption, courseSkillTags, type ISkillTag } from '../../utils/libraryCardMeta';
+import { cardCaption, courseSkillTags, skillTags, type ISkillTag } from '../../utils/libraryCardMeta';
 import styles from './LibraryCard.module.scss';
 
 const CT_ICONS: Record<string, React.ElementType> = {
@@ -45,20 +44,12 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
   const skillCategory = useSkillCategory();
   const { roleSkills } = useLpCompetency();
   const course = useCourseCompetency();
-  const lpSkillTags: ISkillTag[] = competencyScoped && skillCategory
-    ? (() => {
-        const raw = (item as unknown as Record<string, unknown>)[skillCategory.code];
-        const values = Array.isArray(raw) ? raw as string[] : raw ? [String(raw)] : [];
-        // With a target role, the skills it needs come first.
-        const wanted = new Set(roleSkills);
-        const ordered = [...values.filter(v => wanted.has(String(v))), ...values.filter(v => !wanted.has(String(v)))];
-        // Stored as term codes (or legacy names) — show the term name.
-        return Array.from(new Set(ordered.map(v => skillLabel(String(v), skillCategory.terms))))
-          .map(label => ({ label, matched: false }));
-      })()
-    : [];
-  // A Course's library: the item's skills in the course's own framework, the course's skills first.
-  const skillTags = competencyScoped ? lpSkillTags : courseSkillTags(item as unknown as Record<string, unknown>, course);
+  const itemFields = item as unknown as Record<string, unknown>;
+  // A path's library: the course's skills, the target role's first. A Course's library: the item's
+  // skills in the course's own framework, the course's skills first.
+  const tags: ISkillTag[] = competencyScoped
+    ? (skillCategory ? skillTags(itemFields[skillCategory.code], roleSkills, skillCategory.terms) : [])
+    : courseSkillTags(itemFields, course);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: item.identifier,
@@ -94,16 +85,16 @@ export const LibraryCard: React.FC<LibraryCardProps> = ({
       <div className={styles.info}>
         <span className={styles.name} title={item.name}>{item.name}</span>
         <span className={styles.meta}>{cardCaption(item)}</span>
-        {skillTags.length > 0 && (
+        {tags.length > 0 && (
           <span className={styles.skillTags}>
-            {skillTags.slice(0, 3).map(t => (
+            {tags.slice(0, 3).map(t => (
               <span key={t.label} className={[styles.skillTag, t.matched ? styles.skillTagMatched : ''].filter(Boolean).join(' ')}>
                 {t.label}
               </span>
             ))}
-            {skillTags.length > 3 && (
-              <span className={styles.skillTag} title={skillTags.slice(3).map(t => t.label).join(', ')}>
-                {lbl.libraryCard.moreSkills.replace('{count}', String(skillTags.length - 3))}
+            {tags.length > 3 && (
+              <span className={styles.skillTag} title={tags.slice(3).map(t => t.label).join(', ')}>
+                {lbl.libraryCard.moreSkills.replace('{count}', String(tags.length - 3))}
               </span>
             )}
           </span>

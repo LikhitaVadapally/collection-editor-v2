@@ -11,7 +11,7 @@ import { useChannelData } from '../../hooks/useChannelData';
 import { useUserFullName } from '../../hooks/useUserFullName';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useCompetencyFrameworks, useCompetencyRoles, useCompetencySkills } from '../../hooks/useCompetencyFrameworks';
-import { coursesOutsideRole } from '../../utils/lpCompetency';
+import { COMPETENCY_FRAMEWORK_FIELD, TARGET_ROLE_FIELD, coursesOutsideRole } from '../../utils/lpCompetency';
 import { EVALUATION_COURSE_CATEGORY } from '../../utils/lpStructure';
 import { useLabels } from '../../hooks/useLabels';
 import { useFieldPrepare, SECTION_DISPLAY } from './hooks/useFieldPrepare';
@@ -176,6 +176,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
     contentAdditionalCategories,
     childCount,
     profile: editorProfile,
+    competencyLabels: lbl.sparkMetaForm,
   };
 
   // Use category-definition API fields if available, fall back to static config
@@ -243,6 +244,8 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   const skillCategory = useSkillCategory();
   const skillCategoryCodeRef = useRef(skillCategory?.code);
   skillCategoryCodeRef.current = skillCategory?.code;
+  const skillTermsRef = useRef(skillCategory?.terms);
+  skillTermsRef.current = skillCategory?.terms;
   const REVIEW_MODES = ['review', 'read', 'sourcingreview', 'orgreview'];
 
   const validateAndReport = () => {
@@ -295,7 +298,15 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
     const removed = prevFieldCodesRef.current.filter(code => !current.has(code));
     const added = fields.filter(f => !prev.has(f.code));
     prevFieldCodesRef.current = Array.from(current);
-    if (removed.length) form.unregister(removed, { keepValue: true, keepDefaultValue: true });
+    if (removed.length) {
+      // RHF reports the unregister to watch(); it's a field-set change, not an author's edit.
+      seedingRef.current = true;
+      try {
+        form.unregister(removed, { keepValue: true, keepDefaultValue: true });
+      } finally {
+        seedingRef.current = false;
+      }
+    }
     for (const f of added) {
       const stored = f.currentValue;
       if (isEmptyValue(stored) || !isEmptyValue(form.getValues(f.code))) continue;
@@ -366,8 +377,8 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
             }
           }
         }
-        // LP: a new skill framework invalidates the target role (a role belongs to one
-        // framework) and every Level's selected skills.
+        // LP: a new skill framework invalidates the target role (a role belongs to one framework).
+        // Level skills need no clearing: they are worked out from the courses under the new field.
         let clearRole = false;
         // Skills are codes of the skill framework being left behind — meaningless
         // under another one, so clear them with the switch.
@@ -384,12 +395,8 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
             ? (useTreeStore.getState().treeCache[rootNow.id]?.[oldField] ?? rootNow.metadata?.[oldField])
             : undefined;
           if (oldField && (Array.isArray(rootSkills) ? rootSkills.length > 0 : !!rootSkills)) clearedSkillField = oldField;
-          const cleared = useTreeStore.getState().clearLevelSkills(oldField);
-          if (clearRole || cleared > 0) {
-            toast(
-              lbl.learningPath.skillFrameworkChangedToast.replace('{count}', String(cleared)),
-              { icon: <Info size={16} />, duration: 5000 },
-            );
+          if (clearRole || clearedSkillField) {
+            toast(lbl.learningPath.skillFrameworkChangedToast, { icon: <Info size={16} />, duration: 5000 });
           }
         }
         // LP: changing the target role keeps every linked course; the ones teaching anything
@@ -397,7 +404,7 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
         if (changedField === 'targetRole' && isRoot && isLearningPath && typeof value === 'string' && value
           && value !== storedTargetRoleRef.current) {
           const role = competencyRolesRef.current.find(r => r.id === value);
-          const flagged = role ? coursesOutsideRole(useTreeStore.getState().treeData[0], role.skills, skillCategoryCodeRef.current).length : 0;
+          const flagged = role ? coursesOutsideRole(useTreeStore.getState().treeData[0], role.skills, skillCategoryCodeRef.current, skillTermsRef.current).length : 0;
           if (flagged > 0) {
             toast(
               lbl.learningPath.roleChangedCoursesFlaggedToast.replace('{count}', String(flagged)),
@@ -482,24 +489,18 @@ export const SparkMetaForm: React.FC<SparkMetaFormProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillField?.code, skillFieldValueKey, form]);
 
-  // Same for the skill framework: the channel's competency frameworks load after
-  // mount, and only then can a stored id be shown as selected.
-  const competencyField = allFields.find(f => f.code === 'competencyFramework');
-  const competencyFieldValue = competencyField?.currentValue as string | undefined;
+  // Same for the skill framework and target role: the channel's competency frameworks and roles
+  // load after mount, and only then can a stored value be shown as selected.
+  const seededSelects = [COMPETENCY_FRAMEWORK_FIELD, TARGET_ROLE_FIELD]
+    .map(code => [code, allFields.find(f => f.code === code)?.currentValue as string | undefined] as const);
+  const seededSelectsKey = JSON.stringify(seededSelects);
   useEffect(() => {
-    if (!competencyFieldValue) return;
-    if (form.getValues('competencyFramework') !== competencyFieldValue) {
-      seedValue('competencyFramework', competencyFieldValue);
+    for (const [code, value] of seededSelects) {
+      if (value && form.getValues(code) !== value) seedValue(code, value);
     }
-  }, [competencyFieldValue, form]);
-  const roleField = allFields.find(f => f.code === 'targetRole');
-  const roleFieldValue = roleField?.currentValue as string | undefined;
-  useEffect(() => {
-    if (!roleFieldValue) return;
-    if (form.getValues('targetRole') !== roleFieldValue) {
-      seedValue('targetRole', roleFieldValue);
-    }
-  }, [roleFieldValue, form]);
+  // Keyed on the values themselves; the array is rebuilt every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seededSelectsKey, form]);
 
   // Per-field editability is computed in useFieldPrepare (computeEditable):
   // outside review modes a field is editable unless the API says otherwise;

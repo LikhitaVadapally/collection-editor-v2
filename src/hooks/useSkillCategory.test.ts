@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSkillCategory, resolvePriorCourseFramework } from './useSkillCategory';
+import { resolveSkillCategory, resolvePriorCourseFramework, pickSkillCategory } from './useSkillCategory';
 import type { INode } from '../types/editor';
 
 describe('resolveSkillCategory', () => {
@@ -75,5 +75,27 @@ describe('resolvePriorCourseFramework', () => {
     const noAssessment = lpRoot({ framework: 'usf' });
     delete noAssessment.children![0].children![0].metadata!['isAssessmentCourse'];
     expect(resolvePriorCourseFramework(noAssessment)).toBeUndefined();
+  });
+});
+
+describe('pickSkillCategory', () => {
+  const competency = { code: 'skill', terms: [{ identifier: 'crop-survey', code: 'crop-survey', name: 'Crop Survey' }] };
+  const curriculum = { code: 'topic', terms: [] };
+
+  it('uses the competency framework once it has loaded (positive)', () => {
+    expect(pickSkillCategory({ competency, storedFramework: 'agro', channelFrameworks: ['agro'], curriculum })).toBe(competency);
+  });
+
+  it('gives no category while a stored competency framework is still loading or failed (negative)', () => {
+    expect(pickSkillCategory({ competency: null, storedFramework: 'agro', channelFrameworks: ['agro'], curriculum })).toBeNull();
+    expect(pickSkillCategory({ competency: null, storedFramework: 'agro', channelFrameworks: undefined, curriculum })).toBeNull();
+  });
+
+  it('falls back to the curriculum with no competency framework stored (positive)', () => {
+    expect(pickSkillCategory({ competency: null, storedFramework: undefined, channelFrameworks: undefined, curriculum })).toBe(curriculum);
+  });
+
+  it('falls back to the curriculum for a stored id that is not a competency framework, e.g. NCF (positive)', () => {
+    expect(pickSkillCategory({ competency: null, storedFramework: 'NCF', channelFrameworks: ['agro'], curriculum })).toBe(curriculum);
   });
 });

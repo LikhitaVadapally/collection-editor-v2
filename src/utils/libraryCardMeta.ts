@@ -21,11 +21,28 @@ export interface ISkillTag {
 }
 
 /**
+ * A library item's skill tags as card chips: one per skill (a legacy name tag counts the same as
+ * its code), labelled with the term's name. The `wanted` skills — the course's own, or the path's
+ * target role's — come first, marked `matched`.
+ */
+export function skillTags(raw: unknown, wanted: string[], terms: ITerm[] | undefined): ISkillTag[] {
+  const values = (Array.isArray(raw) ? raw : raw != null && raw !== '' ? [raw] : []).map(String);
+  const wantedCodes = new Set(wanted.map((s) => findSkillTerm(s, terms)?.code ?? s));
+  const seen = new Set<string>();
+  const tags: ISkillTag[] = [];
+  for (const v of values) {
+    const code = findSkillTerm(v, terms)?.code ?? v;
+    if (seen.has(code)) continue;
+    seen.add(code);
+    tags.push({ label: skillLabel(v, terms), matched: wantedCodes.has(code) });
+  }
+  return [...tags.filter((t) => t.matched), ...tags.filter((t) => !t.matched)];
+}
+
+/**
  * The skills a library item teaches, for its card in a Course's library. Read from the item's own
  * skill field, and only when the item uses the course's skill framework: a code means nothing
- * outside its framework, so another framework's tags are not guessed at. The course's own skills
- * come first, marked `matched`; names resolve through the course framework's terms, and a legacy
- * name tag counts the same as its code.
+ * outside its framework, so another framework's tags are not guessed at.
  */
 export function courseSkillTags(
   item: Record<string, unknown>,
@@ -33,16 +50,5 @@ export function courseSkillTags(
 ): ISkillTag[] {
   const { frameworkId, skillField, skills, terms } = course;
   if (!frameworkId || !skillField || item.competencyFramework !== frameworkId) return [];
-  const raw = item[skillField];
-  const values = (Array.isArray(raw) ? raw : raw != null && raw !== '' ? [raw] : []).map(String);
-  const wanted = new Set(skills.map((s) => findSkillTerm(s, terms)?.code ?? s));
-  const seen = new Set<string>();
-  const tags: ISkillTag[] = [];
-  for (const v of values) {
-    const code = findSkillTerm(v, terms)?.code ?? v;
-    if (seen.has(code)) continue;
-    seen.add(code);
-    tags.push({ label: skillLabel(v, terms), matched: wanted.has(code) });
-  }
-  return [...tags.filter((t) => t.matched), ...tags.filter((t) => !t.matched)];
+  return skillTags(item[skillField], skills, terms);
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  courseSkills, coursesOutsideRole, getLpCompetencyFramework, getLpTargetRole, roleSkillsNotTaught, teachesOnly,
+  courseSkills, coursesOutsideRole, getRootCompetencyFramework, getRootTargetRole, roleSkillsNotTaught, skillsOutsideRole,
 } from './lpCompetency';
 import type { INode } from '../types/editor';
 
@@ -20,9 +20,9 @@ const root = {
 
 describe('lpCompetency', () => {
   it('reads the root fields, preferring unsaved edits', () => {
-    expect(getLpCompetencyFramework(root, {})).toBe('fw_health');
-    expect(getLpTargetRole(root, { root: { targetRole: 'icu' } })).toBe('icu');
-    expect(getLpTargetRole(root, { root: { targetRole: '' } })).toBeUndefined();
+    expect(getRootCompetencyFramework(root, {})).toBe('fw_health');
+    expect(getRootTargetRole(root, { root: { targetRole: 'icu' } })).toBe('icu');
+    expect(getRootTargetRole(root, { root: { targetRole: '' } })).toBeUndefined();
   });
 
   it('reads course skills as an array', () => {
@@ -39,19 +39,30 @@ describe('lpCompetency', () => {
     expect(roleSkillsNotTaught(lp, ['FR2', 'IT1'], 'cuisine')).toEqual(['IT1']);
   });
 
-  it('teachesOnly mirrors subsetOf: every skill allowed, at least one', () => {
-    expect(teachesOnly(['s1'], ['s1', 's2', 's3'])).toBe(true);
-    expect(teachesOnly(['s1', 's2'], ['s1', 's2', 's3'])).toBe(true);
-    expect(teachesOnly(['s1', 's4'], ['s1', 's2', 's3'])).toBe(false);
-    expect(teachesOnly([], ['s1'])).toBe(false);
+  it('skillsOutsideRole lists the skills the role doesn\'t require', () => {
+    expect(skillsOutsideRole(['s1', 's4'], ['s1', 's2'])).toEqual(['s4']);
+    expect(skillsOutsideRole(['s1'], ['s1', 's2'])).toEqual([]);
+    expect(skillsOutsideRole([], ['s1'])).toEqual([]);
   });
 
   // With a role a path may only carry courses within it: c1 teaches hand-hygiene too, c2 nothing
-  // of the role, c3 nothing at all. The Prior Assessment is never flagged.
-  it('flags regular courses teaching anything outside the role, never the Prior Assessment', () => {
-    expect(coursesOutsideRole(root, ['ppe-use', 'sterile-field']).map(c => c.id)).toEqual(['c1', 'c2', 'c3']);
-    expect(coursesOutsideRole(root, ['hand-hygiene', 'ppe-use', 'budget-preparation']).map(c => c.id)).toEqual(['c3']);
+  // of the role. c3 is untagged (validation reports it as missing a tag) and the Prior Assessment
+  // is never flagged.
+  it('flags regular courses teaching a skill outside the role, never untagged ones or the Prior Assessment', () => {
+    expect(coursesOutsideRole(root, ['ppe-use', 'sterile-field']).map(c => c.id)).toEqual(['c1', 'c2']);
+    expect(coursesOutsideRole(root, ['hand-hygiene', 'ppe-use', 'budget-preparation'])).toEqual([]);
     expect(coursesOutsideRole(root, [])).toEqual([]);
+  });
+
+  it('matches courses tagged by skill name against the role\'s codes', () => {
+    const terms = [
+      { identifier: 'crop-survey', code: 'crop-survey', name: 'Crop Survey' },
+      { identifier: 'soil-sampling', code: 'soil-sampling', name: 'Soil Sampling' },
+    ];
+    const lp = { id: 'r', isFolder: true, metadata: {}, children: [level('l', [course('old', ['Crop Survey'])])] } as unknown as INode;
+    expect(courseSkills(course('old', ['Crop Survey']), 'skill', terms)).toEqual(['crop-survey']);
+    expect(coursesOutsideRole(lp, ['crop-survey'], 'skill', terms)).toEqual([]);
+    expect(roleSkillsNotTaught(lp, ['crop-survey', 'soil-sampling'], 'skill', terms)).toEqual(['soil-sampling']);
   });
 
   it('lists role skills no regular course teaches (the Prior Assessment does not count)', () => {

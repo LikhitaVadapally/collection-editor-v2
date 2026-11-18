@@ -9,10 +9,10 @@ import { useEditorStore } from '../../store/editor.store';
 import { useUiStore } from '../../store/ui.store';
 import { useLabels } from '../../hooks/useLabels';
 import { useSkillScope } from '../../hooks/useSkillScope';
-import { computeLevelSkills, computeSkillsCovered, isAssessmentLevel } from '../../utils/lpStructure';
+import { computeLevelSkills, computeSkillsCovered, getPriorAssessmentCourse, isAssessmentLevel } from '../../utils/lpStructure';
 import { useSkillCategory } from '../../hooks/useSkillCategory';
 import { useLpCompetency } from '../../hooks/useLpCompetency';
-import { courseSkills, roleSkillsNotTaught, teachesOnly } from '../../utils/lpCompetency';
+import { courseSkills, roleSkillsNotTaught, skillsOutsideRole } from '../../utils/lpCompetency';
 import { skillLabel } from '../../utils/skillTerms';
 import { ContentRow } from './ContentRow';
 import { AssessmentSlotItem } from './AssessmentSlotItem';
@@ -59,12 +59,11 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
   // enforces it); with one, the course flag below says which course is outside the role.
   const outOfScopeSkills = source === 'prior' ? levelSkills.filter(s => !scope.includes(s)) : [];
   const { roleSkills } = useLpCompetency();
-  const notTaughtRoleSkills = isLpRoot ? roleSkillsNotTaught(treeData[0], roleSkills, skillCategory?.code) : [];
+  const notTaughtRoleSkills = isLpRoot ? roleSkillsNotTaught(treeData[0], roleSkills, skillCategory?.code, skillTerms) : [];
   // Prior Assessment linked but not testing every role skill (the role decides the path's skills).
-  const priorCourse = isLpRoot && isAssessmentLevel(treeData[0]?.children?.[0])
-    ? treeData[0]?.children?.[0]?.children?.[0] : undefined;
+  const priorCourse = isLpRoot ? getPriorAssessmentCourse(treeData[0]) : undefined;
   const priorMissingRoleSkills = priorCourse && roleSkills.length
-    ? roleSkills.filter(s => !courseSkills(priorCourse, skillCategory?.code).includes(s)) : [];
+    ? roleSkills.filter(s => !courseSkills(priorCourse, skillCategory?.code, skillTerms).includes(s)) : [];
   const skillsCovered = isLpRoot ? computeSkillsCovered(treeData[0], skillCategory?.code, skillTerms) : [];
   const sensors = useSensors(
     // distance:5 prevents conflict with outer DnD context (distance:8) while still feeling responsive
@@ -131,7 +130,7 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
                       className={missing ? [styles.chip, styles.chipWarn].join(' ') : styles.chip}
                       title={missing ? lbl.learningPath.roleSkillNotTaughtTitle : lbl.learningPath.roleSkillTaughtTitle}
                     >
-                      {labelOf(s)}{missing ? ` · ${lbl.learningPath.roleSkillNotTaughtSuffix}` : ' ✓'}
+                      {labelOf(s)}{missing ? ` · ${lbl.learningPath.roleSkillNotTaughtSuffix}` : ` ${lbl.learningPath.roleSkillTaughtSuffix}`}
                     </span>
                   );
                 })}
@@ -205,7 +204,7 @@ export const UnitContentList: React.FC<UnitContentListProps> = ({ editorMode, is
                       item={course}
                       onRemove={handleRemoveCourse}
                       isEditable={isEditable}
-                      notTeachingRole={roleSkills.length > 0 && !teachesOnly(courseSkills(course, skillCategory?.code), roleSkills)}
+                      notTeachingRole={skillsOutsideRole(courseSkills(course, skillCategory?.code, skillTerms), roleSkills).length > 0}
                     />
                   ))}
                 </div>

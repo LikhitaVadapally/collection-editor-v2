@@ -1,9 +1,7 @@
-import { useMemo } from 'react';
 import { useEditorStore } from '../store/editor.store';
 import { useTreeStore } from '../store/tree.store';
 import { useCompetencyRoles, useCompetencySkills } from './useCompetencyFrameworks';
-import { getLpCompetencyFramework, getLpTargetRole } from '../utils/lpCompetency';
-import type { ICompetencyRole } from '../api/competencyFramework';
+import { getRootCompetencyFramework, getRootTargetRole } from '../utils/lpCompetency';
 import type { ITerm } from '../types/framework';
 
 export interface ILpCompetency {
@@ -13,34 +11,29 @@ export interface ILpCompetency {
   terms: ITerm[];
   /** The content field skill tags live in for this framework (its last category code). */
   skillField: string | undefined;
-  roles: ICompetencyRole[];
-  /** The chosen target role, once roles have loaded. */
-  role: ICompetencyRole | undefined;
-  /** The stored target role code, even before roles load. */
-  roleId: string | undefined;
+  /** The chosen target role's skill codes; empty with no role, or before roles load. */
   roleSkills: string[];
 }
 
 const NONE: string[] = [];
+const NO_TERMS: ITerm[] = [];
 
 /** Learning Path skill framework + target role. Inert (all empty) outside the LP profile. */
 export function useLpCompetency(): ILpCompetency {
   const isLearningPath = useEditorStore((s) => s.editorProfile.key === 'learningPath');
   const root = useTreeStore((s) => s.treeData[0]);
   const treeCache = useTreeStore((s) => s.treeCache);
-  const stored = isLearningPath ? getLpCompetencyFramework(root, treeCache) : undefined;
-  const roleId = isLearningPath ? getLpTargetRole(root, treeCache) : undefined;
+  const stored = isLearningPath ? getRootCompetencyFramework(root, treeCache) : undefined;
+  const roleId = isLearningPath ? getRootTargetRole(root, treeCache) : undefined;
 
-  const { skills, skillField: loadedSkillField, isLoaded } = useCompetencySkills(stored);
-  const frameworkId = stored && isLoaded && skills.length > 0 ? stored : undefined;
+  const { usableFrameworkId: frameworkId, skillField, terms } = useCompetencySkills(stored);
   const { roles } = useCompetencyRoles(frameworkId);
-
-  const terms = useMemo<ITerm[]>(
-    () => (frameworkId ? skills.map((sk) => ({ identifier: sk.code, code: sk.code, name: sk.name })) : []),
-    [frameworkId, skills],
-  );
   const role = roleId ? roles.find((r) => r.id === roleId) : undefined;
-  const skillField = frameworkId ? loadedSkillField : undefined;
 
-  return { frameworkId, terms, skillField, roles, role, roleId, roleSkills: role?.skills ?? NONE };
+  return {
+    frameworkId,
+    terms: frameworkId ? terms : NO_TERMS,
+    skillField: frameworkId ? skillField : undefined,
+    roleSkills: role?.skills ?? NONE,
+  };
 }

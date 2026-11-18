@@ -9,7 +9,7 @@ import { useLabels } from '../../hooks/useLabels';
 import { useTreeStore } from '../../store/tree.store';
 import { useEditorStore } from '../../store/editor.store';
 import { useUiStore } from '../../store/ui.store';
-import { getLpCompetencyFramework } from '../../utils/lpCompetency';
+import { getRootCompetencyFramework } from '../../utils/lpCompetency';
 import { getLevelExamCourse, hasExplicitCurriculum, isAssessmentSlotFilled, isEvaluationCourse, isPrePostSlot, wouldBecomeAmbiguousSlot } from '../../utils/lpStructure';
 import { LibraryCard } from './LibraryCard';
 import { FilterChips } from './FilterChips';
@@ -182,7 +182,7 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
       // against, and the course would just get pruned the moment one is set.
       // A competency (skill) framework scopes the path just as well as a Curriculum does.
       if (isLearningPath && !hasExplicitCurriculum(treeData[0], treeCache)
-        && !getLpCompetencyFramework(treeData[0], treeCache)) {
+        && !getRootCompetencyFramework(treeData[0], treeCache)) {
         toast.error(lbl.learningPath.selectCurriculumFirstToast);
         return;
       }
@@ -280,7 +280,6 @@ export const LibraryDock: React.FC<LibraryDockProps> = ({ editorMode, collapsed 
       ),
     [activeFilters],
   );
-
 
   // Course with skills: what the browse finds that teaches none of them — apart and collapsed, so the
   // author can still add it.

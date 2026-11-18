@@ -25,6 +25,7 @@ export async function listCompetencyFrameworks(channel?: string): Promise<ICompe
         ...(channel ? { channel: [channel] } : {}),
       },
       fields: ['identifier', 'name'],
+      // One page: a channel has a handful of skill frameworks, far fewer than this.
       limit: 100,
       sort_by: { name: 'asc' },
     },

@@ -10,7 +10,7 @@ interface LevelCourseItemProps {
   item: INode;
   onRemove: (id: string) => void;
   isEditable: boolean;
-  /** Target role set and this course teaches none of its skills — kept, but flagged. */
+  /** Target role set and this course teaches a skill outside it — kept, but flagged. */
   notTeachingRole?: boolean;
 }
 

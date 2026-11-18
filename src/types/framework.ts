@@ -39,8 +39,8 @@ export interface IFrameworkDetails {
   orgFrameworks?: Array<{ label: string; value: string }>;
   /** Options for the 'additionalCategories' field — from channel.collectionAdditionalCategories. */
   channelAdditionalCategories?: string[];
-  /** Course skill tagging against a `CompetencyFramework` (lern reads `competencyFramework` +
-   *  `skill`). Absent when the node isn't a Course root. */
+  /** Skill tagging against a `CompetencyFramework` (lern reads `competencyFramework` + the
+   *  framework's skill field). Present on a Course, Evaluation Course or Learning Path root. */
   competency?: ICompetencyTagging;
 }
 

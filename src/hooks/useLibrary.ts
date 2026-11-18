@@ -7,7 +7,7 @@ import { useSkillCategory } from './useSkillCategory';
 import { useLpCompetency } from './useLpCompetency';
 import { useCourseCompetency } from './useCourseCompetency';
 import { useSkillScope, type ISkillScope } from './useSkillScope';
-import { LP_COMPETENCY_FIELD } from '../utils/lpCompetency';
+import { COMPETENCY_FRAMEWORK_FIELD } from '../utils/lpCompetency';
 import { EVALUATION_COURSE_CATEGORY, getExplicitCurriculum } from '../utils/lpStructure';
 import { compositeSearch, DEFAULT_SEARCH_FIELDS } from '../api/content';
 import { skillFilterValues } from '../utils/skillTerms';
@@ -29,7 +29,7 @@ export function buildCourseLibraryFilters(
   terms: ITerm[] | undefined,
 ): Record<string, unknown> {
   return {
-    [LP_COMPETENCY_FIELD]: [frameworkId],
+    [COMPETENCY_FRAMEWORK_FIELD]: [frameworkId],
     [skillField]: skillFilterValues(skills, terms),
   };
 }
@@ -62,30 +62,32 @@ export function courseLibraryHint(course: { isCourse: boolean; ready: boolean })
  * to Evaluation Course specifically while picking the Prior/Outcome slot or
  * a Level Exam course (isPickingEvaluationCourse) — a course can only ever
  * fill those roles by being authored under that category (see
- * isEvaluationCourse). Filling the pre/post assessment slot additionally has
- * no competency constraint (the prior assessment *defines* the skill scope,
- * so it can't be filtered by it) — a Level Exam pick, by contrast, IS still
- * narrowed by the Level's selected skills, same as any other course added to
- * that Level. Browsing a Level otherwise shows every Course by default,
- * narrowed to the selected skills once the author has picked any.
+ * isEvaluationCourse). Without a target role, filling the pre/post assessment
+ * slot has no skill constraint (the prior assessment *defines* the skill
+ * scope, so it can't be filtered by it); with one, it must test the role's
+ * skills. Any other pick, a Level Exam course included, is narrowed to the
+ * path's skill scope (`browseSkillValues`) once there is one.
+ *
+ * `browseSkillValues` and `competency.roleSkillValues` are search values:
+ * term codes plus their names, so courses tagged with legacy names match.
  */
 export function buildLpLibraryFilters(
   activeAssessmentSlot: 'pre' | 'post' | null,
   isPickingEvaluationCourse: boolean,
-  selectedSkills: string[],
+  browseSkillValues: string[],
   skillCategoryCode: string | undefined,
   frameworkId?: string,
-  competency?: { frameworkId: string; roleSkills: string[] },
+  competency?: { frameworkId: string; roleSkillValues: string[] },
 ): Record<string, unknown> {
   const filters: Record<string, unknown> = {
     primaryCategory: [isPickingEvaluationCourse ? EVALUATION_COURSE_CATEGORY : 'Course'],
   };
   if (competency) {
     // Skill codes only mean something inside their own competency framework.
-    filters[LP_COMPETENCY_FIELD] = [competency.frameworkId];
+    filters[COMPETENCY_FRAMEWORK_FIELD] = [competency.frameworkId];
     // The Prior/Outcome Assessment must test the target role's skills.
-    if (activeAssessmentSlot && competency.roleSkills.length && skillCategoryCode) {
-      filters[skillCategoryCode] = competency.roleSkills;
+    if (activeAssessmentSlot && competency.roleSkillValues.length && skillCategoryCode) {
+      filters[skillCategoryCode] = competency.roleSkillValues;
       return filters;
     }
   } else if (frameworkId) {
@@ -94,10 +96,10 @@ export function buildLpLibraryFilters(
     // can't read.
     filters['framework'] = [frameworkId];
   }
-  if (!activeAssessmentSlot && selectedSkills.length && skillCategoryCode) {
-    // Only courses whose skills ALL lie within the selection (Knowlg's subsetOf): a course that
-    // also teaches a skill outside the Level would carry it into the Level unasked.
-    filters[skillCategoryCode] = { subsetOf: selectedSkills };
+  if (!activeAssessmentSlot && browseSkillValues.length && skillCategoryCode) {
+    // Only courses whose skills ALL lie within the scope (Knowlg's subsetOf): a course that also
+    // teaches a skill outside it would carry that skill into the path unasked.
+    filters[skillCategoryCode] = { subsetOf: browseSkillValues };
   }
   return filters;
 }
@@ -117,25 +119,24 @@ export function buildSearchFields(
 ): string[] | undefined {
   // A Course with a skill framework: each item's framework and skill tags ride along so its card
   // can show the skills it teaches.
-  if (!competencyScoped && courseSkillField) return [...DEFAULT_SEARCH_FIELDS, courseSkillField, LP_COMPETENCY_FIELD];
+  if (!competencyScoped && courseSkillField) return [...DEFAULT_SEARCH_FIELDS, courseSkillField, COMPETENCY_FRAMEWORK_FIELD];
   if (!competencyScoped || !skillCategoryCode) return undefined;
   // 'framework' rides along so a linked course knows which taxonomy its
   // skill tags live under (useSkillCategory resolves via the prior course's
   // framework, which may differ from the LP's own).
-  return [...DEFAULT_SEARCH_FIELDS, skillCategoryCode, 'framework', LP_COMPETENCY_FIELD];
+  return [...DEFAULT_SEARCH_FIELDS, skillCategoryCode, 'framework', COMPETENCY_FRAMEWORK_FIELD];
 }
 
 /**
  * Why the Library is (or would be) empty for the LP profile, so the dock can
  * show a guiding message instead of the generic "no results" empty state —
- * mandatory per learning_path_plan.md §3 item 3: with no Curriculum chosen
- * there's no framework to scope search by, and with no skills selected on a
- * content Level there's nothing to filter by, so browsing must show nothing
- * rather than every course. Doesn't apply to Collection, root, an assessment
- * Level, or while picking an Evaluation Course for the Prior/Outcome
+ * mandatory per learning_path_plan.md §3 item 3: with neither a Curriculum nor
+ * a skill framework chosen there's no framework to scope search by, so
+ * browsing must show nothing rather than every course. Doesn't apply to
+ * Collection, or while picking an Evaluation Course for the Prior/Outcome
  * Assessment slot or a Level Exam — that course *defines* the skill scope
- * (and isn't required to belong to any particular Curriculum), so neither
- * gate applies while filling it. isPickingEvaluationCourse mirrors
+ * (and isn't required to belong to any particular Curriculum), so the gate
+ * doesn't apply while filling it. isPickingEvaluationCourse mirrors
  * useLibrary's own activeAssessmentSlot-or-activeLevelExamTarget check.
  */
 export function computeLibraryEmptyReason(
@@ -158,8 +159,42 @@ export function resolveBrowseSkills(scope: ISkillScope): string[] {
   return scope.source === 'manual' ? [] : scope.scope;
 }
 
+/**
+ * LP profile: the competency scope of the search, with the role's skills as search values (codes
+ * and names) so courses tagged with legacy names match. None without a usable skill framework.
+ */
+export function lpCompetencyScope(
+  frameworkId: string | undefined,
+  roleSkills: string[],
+  terms: ITerm[] | undefined,
+): { frameworkId: string; roleSkillValues: string[] } | undefined {
+  return frameworkId ? { frameworkId, roleSkillValues: skillFilterValues(roleSkills, terms) } : undefined;
+}
+
+/**
+ * Adds a page of "Other content" to what is shown. The next page starts after what the server
+ * returned, not after what is shown, so an item dropped as already shown doesn't shift it.
+ */
+export function appendOtherPage(
+  shown: IContent[],
+  page: IContent[],
+  offset: number,
+): { content: IContent[]; nextOffset: number } {
+  const content = offset === 0 ? page : [...shown, ...page.filter((c) => !shown.some((p) => p.identifier === c.identifier))];
+  return { content, nextOffset: offset + page.length };
+}
+
+/** Hands out a token per request; only the newest one may apply its response. */
+export function latestRequestGuard(): { next: () => number; isLatest: (token: number) => boolean; invalidate: () => void } {
+  let current = 0;
+  return {
+    next: () => ++current,
+    isLatest: (token) => token === current,
+    invalidate: () => { current += 1; },
+  };
+}
+
 const PAGE_SIZE = 20;
-const EMPTY_SKILLS: string[] = [];
 const NO_ITEMS: IContent[] = [];
 
 /** The browse "Other content" pages through: set by each new main-list browse, reused by its Load more. */
@@ -227,7 +262,6 @@ export function useLibrary() {
   const activeLevelExamTarget = useUiStore((s) => s.activeLevelExamTarget);
   const treeData = useTreeStore((s) => s.treeData);
   const treeCache = useTreeStore((s) => s.treeCache);
-  const selectedNodeId = useTreeStore((s) => s.selectedNodeId);
   const skillCategory = useSkillCategory();
   // The LP root's EXPLICITLY chosen Curriculum only — never the channel/
   // context default (contentFramework) that useEditorInit/SparkMetaForm
@@ -239,30 +273,40 @@ export function useLibrary() {
     : undefined;
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lp = useLpCompetency();
-  const competency = editorProfile.competencyScoped && lp.frameworkId
-    ? { frameworkId: lp.frameworkId, roleSkills: lp.roleSkills }
+  const competency = editorProfile.competencyScoped
+    ? lpCompetencyScope(lp.frameworkId, lp.roleSkills, lp.terms)
     : undefined;
   const course = useCourseCompetency();
   // Course with skills: the main list is narrowed to them, and the rest sits in "Other content".
   const courseSkillFiltered = course.ready;
   const [otherContent, setOtherContent] = useState<IContent[]>(NO_ITEMS);
+  // Read by fetchOtherPage, which runs after an await and would otherwise see a stale list.
+  const otherContentRef = useRef(otherContent);
+  otherContentRef.current = otherContent;
   const [otherTotal, setOtherTotal] = useState(0);
+  // How far the server has paged, counted from what it returned: dropping an item already shown
+  // must not shift the next page's offset.
+  const [otherOffset, setOtherOffset] = useState(0);
   const [otherLoading, setOtherLoading] = useState(false);
   const otherBrowse = useRef<IOtherBrowse | null>(null);
-  // Bumped by every new browse, so a slow page of an older one can't land in the current list.
-  const otherSeq = useRef(0);
+  // A slow page of an older browse must not land in the current list.
+  const otherGuard = useRef(latestRequestGuard()).current;
+  // The same for the main list: an earlier, slower search (e.g. the unfiltered one fired before
+  // the course's skills resolved) must not replace a newer one's results.
+  const mainGuard = useRef(latestRequestGuard()).current;
 
   const clearOther = () => {
-    otherSeq.current += 1;
+    otherGuard.invalidate();
     otherBrowse.current = null;
     setOtherContent(NO_ITEMS);
     setOtherTotal(0);
+    setOtherOffset(0);
     setOtherLoading(false);
   };
 
   // One page of "Other content": the first replaces the list, later ones (Load more) append.
   const fetchOtherPage = async (browse: IOtherBrowse, offset: number) => {
-    const seq = ++otherSeq.current;
+    const token = otherGuard.next();
     setOtherLoading(true);
     try {
       const { content, count } = await compositeSearch({
@@ -274,13 +318,15 @@ export function useLibrary() {
         sortBy: browse.sortBy,
         fields: browse.fields,
       });
-      if (seq !== otherSeq.current) return;
-      setOtherContent((prev) => (offset === 0 ? content : [...prev, ...content.filter((c) => !prev.some((p) => p.identifier === c.identifier))]));
+      if (!otherGuard.isLatest(token)) return;
+      const page = appendOtherPage(otherContentRef.current, content, offset);
+      setOtherContent(page.content);
+      setOtherOffset(page.nextOffset);
       setOtherTotal(count);
     } catch (e) {
       console.error('[useLibrary] other content load error:', e);
     } finally {
-      if (seq === otherSeq.current) setOtherLoading(false);
+      if (otherGuard.isLatest(token)) setOtherLoading(false);
     }
   };
 
@@ -300,12 +346,11 @@ export function useLibrary() {
       reset = true,
       sortAZ = false,
     ) => {
+      const token = mainGuard.next();
       store.setLoading(true);
       try {
-        // No Curriculum chosen yet, or (viewing a content Level) no skills
-        // selected on it yet: nothing to scope the search by, so show
-        // nothing rather than every course in the framework (see
-        // emptyReason above for why each case applies).
+        // Neither a Curriculum nor a skill framework chosen: nothing to scope the search by, so
+        // show nothing rather than every course (see computeLibraryEmptyReason).
         if (emptyReason) {
           store.setContent([], 0);
           clearOther();
@@ -313,8 +358,8 @@ export function useLibrary() {
         }
         let filters: Record<string, unknown>;
         if (editorProfile.competencyScoped) {
-          // Level skills are saved as codes, but courses may still be tagged
-          // with legacy names — match either.
+          // The scope is held as codes, but courses may still be tagged with legacy names — match
+          // either.
           const lpFilters = buildLpLibraryFilters(
             activeAssessmentSlot, isPickingEvaluationCourse,
             skillFilterValues(browseSkills, skillCategory?.terms), skillCategory?.code, lpFrameworkId,
@@ -353,6 +398,7 @@ export function useLibrary() {
           sortBy,
           fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code, course.skillField),
         });
+        if (!mainGuard.isLatest(token)) return;
 
         if (reset) {
           store.setContent(content, count);
@@ -380,11 +426,11 @@ export function useLibrary() {
       } catch (e) {
         console.error('[useLibrary] load error:', e);
       } finally {
-        store.setLoading(false);
+        if (mainGuard.isLatest(token)) store.setLoading(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allowedCategories, channel, editorProfile, activeAssessmentSlot, isPickingEvaluationCourse, browseSkills, skillCategory, lpFrameworkId, emptyReason, competency?.frameworkId, competency?.roleSkills, courseSkillFiltered, course],
+    [allowedCategories, channel, editorProfile, activeAssessmentSlot, isPickingEvaluationCourse, browseSkills, skillCategory, lpFrameworkId, emptyReason, competency?.frameworkId, competency?.roleSkillValues, courseSkillFiltered, course],
   );
 
   // Reset any in-progress search when the resolved framework (Curriculum)
@@ -412,16 +458,16 @@ export function useLibrary() {
 
   // LP-only: re-run on anything that changes what the search should be
   // scoped to (assessment slot or Level Exam target armed, the path's skill
-  // scope, the root's Curriculum, or which node is selected). Gated by
-  // competencyScoped so Collection's user-driven search/
-  // filter/sort state (set via the search/setFilter/etc. callbacks below) is
-  // never silently reset just because the author clicked a different tree
-  // node.
+  // scope, the root's Curriculum, its skill framework or target role). The
+  // selected tree node doesn't scope the search, so clicking around the path
+  // doesn't reload it. Gated by competencyScoped so Collection's user-driven
+  // search/filter/sort state (set via the search/setFilter/etc. callbacks
+  // below) is never silently reset.
   useEffect(() => {
     if (!editorProfile.competencyScoped) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, browseSkills.join('|'), lpFrameworkId, selectedNodeId, competency?.frameworkId, competency?.roleSkills.join('|')]);
+  }, [editorProfile.competencyScoped, activeAssessmentSlot, activeLevelExamTarget, browseSkills.join('|'), lpFrameworkId, competency?.frameworkId, competency?.roleSkillValues.join('|')]);
 
   // Course-only: re-run when the course's skill framework or skills change. The author's
   // search/filter/sort state is kept, since the change re-sorts the same browse rather than
@@ -487,9 +533,9 @@ export function useLibrary() {
   const loadMoreOther = useCallback(() => {
     const browse = otherBrowse.current;
     if (!browse || otherLoading) return;
-    void fetchOtherPage(browse, otherContent.length);
+    void fetchOtherPage(browse, otherOffset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otherLoading, otherContent.length, channel]);
+  }, [otherLoading, otherOffset, channel]);
 
   return {
     content: store.filteredContent,
@@ -512,14 +558,13 @@ export function useLibrary() {
     // LP profile only — why content is (or would be) empty, so the dock can
     // show a guiding message instead of the generic "no results" state.
     emptyReason,
-    roleSkills: competency?.roleSkills ?? EMPTY_SKILLS,
     // Course profile only — with skills, the main list holds the content that teaches them and
     // otherContent the rest; without, a hint to pick them.
     skillMatched: courseSkillFiltered,
     otherContent,
     otherTotal,
     otherLoading,
-    otherHasMore: otherContent.length < otherTotal,
+    otherHasMore: otherOffset < otherTotal,
     loadMoreOther,
     courseHint: courseLibraryHint(course),
   };

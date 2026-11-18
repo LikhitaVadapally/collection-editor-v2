@@ -2,6 +2,7 @@ import type { ICompetencyTagging, IFrameworkDetails, ITerm } from '../../../type
 import type { IEditorProfile } from '../../../types/profile';
 import { resolveSkillCategory } from '../../../hooks/useSkillCategory';
 import { toSkillCodes } from '../../../utils/skillTerms';
+import { COMPETENCY_FRAMEWORK_FIELD, SKILL_FIELD, TARGET_ROLE_FIELD } from '../../../utils/lpCompetency';
 
 // Design labels for the LP root's consumption-policy field — the raw values
 // match the Viewer Service's tracking_policies enum (strict | adaptive |
@@ -94,7 +95,27 @@ export interface IPrepareContext {
    *  (e.g. the LP root's `policy` field) when no category-definition form
    *  config is available yet. */
   profile?: IEditorProfile;
+  /** Labels for the skill framework, skills and target role fields; English when absent. */
+  competencyLabels?: ICompetencyFieldLabels;
 }
+
+export interface ICompetencyFieldLabels {
+  skillFramework: string;
+  selectSkillFramework: string;
+  skills: string;
+  selectSkills: string;
+  targetRole: string;
+  noTargetRole: string;
+}
+
+const DEFAULT_COMPETENCY_LABELS: ICompetencyFieldLabels = {
+  skillFramework: 'Skill framework',
+  selectSkillFramework: 'Select a skill framework',
+  skills: 'Skills',
+  selectSkills: 'Select skills',
+  targetRole: 'Target role (optional)',
+  noTargetRole: 'No target role',
+};
 
 const REVIEW_MODES = new Set(['review', 'read', 'sourcingreview', 'orgreview']);
 
@@ -271,10 +292,34 @@ function adaptToFramework(
   return isRoot && fw.competency ? adaptCompetencyFields(adapted, fw.competency, meta, ctx) : adapted;
 }
 
-const COMPETENCY_FIELD = 'competencyFramework';
-// Until the skill framework loads its field is unknown; `skill` is the common case.
-const SKILL_FIELD = 'skill';
 const SKILLS_SECTION = 'Skills';
+const PATH_SKILLS_SECTION = 'Path skills';
+
+/**
+ * The "Skill framework" select, plus the stored framework when it is one of the channel's. A stored
+ * value that isn't (old content defaults to `NCF`) shows as unselected, and nothing is written
+ * until the author picks one.
+ */
+function skillFrameworkField(
+  competency: ICompetencyTagging,
+  meta: Record<string, unknown>,
+  ctx: IPrepareContext,
+  section: string,
+): { field: PreparedField; selected: string } {
+  const labels = ctx.competencyLabels ?? DEFAULT_COMPETENCY_LABELS;
+  const stored = typeof meta[COMPETENCY_FRAMEWORK_FIELD] === 'string' ? (meta[COMPETENCY_FRAMEWORK_FIELD] as string) : '';
+  const selected = stored && competency.frameworks.some(f => f.value === stored) ? stored : '';
+  return {
+    selected,
+    field: {
+      code: COMPETENCY_FRAMEWORK_FIELD, label: labels.skillFramework, inputType: 'select',
+      editable: computeEditable(COMPETENCY_FRAMEWORK_FIELD, true, ctx), tab: 'details', section,
+      placeholder: labels.selectSkillFramework,
+      options: competency.frameworks,
+      currentValue: selected || undefined,
+    },
+  };
+}
 
 /**
  * Course skill tagging against a competency framework. lern credits a course's skills from two
@@ -287,8 +332,6 @@ const SKILLS_SECTION = 'Skills';
  * - Once one is picked, its skill field becomes a multiselect of that framework's skills,
  *   replacing any curriculum-framework field of the same code (e.g. USF's `skill`), since both
  *   would write the same field.
- * - A stored value that isn't one of the channel's competency frameworks (old courses default to
- *   `NCF`) shows as unselected, and nothing is written until the author picks one.
  * With no skill framework picked, the curriculum framework's skill field behaves as before.
  */
 export function adaptCompetencyFields(
@@ -299,28 +342,17 @@ export function adaptCompetencyFields(
 ): PreparedField[] {
   if (competency.frameworksLoaded && competency.frameworks.length === 0) return fields;
 
-  const stored = typeof meta[COMPETENCY_FIELD] === 'string' ? (meta[COMPETENCY_FIELD] as string) : '';
-  const selected = stored && competency.frameworks.some(f => f.value === stored) ? stored : '';
-  const editable = computeEditable(COMPETENCY_FIELD, true, ctx);
-
-  const frameworkField: PreparedField = {
-    code: COMPETENCY_FIELD, label: 'Skill framework', inputType: 'select',
-    editable, tab: 'details', section: SKILLS_SECTION,
-    placeholder: 'Select a skill framework',
-    options: competency.frameworks,
-    currentValue: selected || undefined,
-  };
-
+  const { field: frameworkField, selected } = skillFrameworkField(competency, meta, ctx, SKILLS_SECTION);
   const skillCode = competency.skillField ?? SKILL_FIELD;
-  const rest = fields.filter(f => f.code !== COMPETENCY_FIELD && (!selected || f.code !== skillCode));
+  const rest = fields.filter(f => f.code !== COMPETENCY_FRAMEWORK_FIELD && (!selected || f.code !== skillCode));
   if (!selected) return [...rest, frameworkField];
 
-  const terms: ITerm[] = competency.skills.map(sk => ({ identifier: sk.code, code: sk.code, name: sk.name }));
-  const skillValue = toSkillCodes(meta[skillCode], terms);
+  const labels = ctx.competencyLabels ?? DEFAULT_COMPETENCY_LABELS;
+  const skillValue = toSkillCodes(meta[skillCode], competency.skills);
   const skillField: PreparedField = {
-    code: skillCode, label: 'Skills', inputType: 'multiselect',
+    code: skillCode, label: labels.skills, inputType: 'multiselect',
     editable: computeEditable(skillCode, true, ctx), tab: 'details', section: SKILLS_SECTION,
-    placeholder: 'Select skills',
+    placeholder: labels.selectSkills,
     // Keep a stored code the framework no longer has visible, so it isn't dropped silently.
     options: withStoredCodes(competency.skills.map(sk => ({ label: sk.name, value: sk.code })), skillValue),
     sourceCategory: skillCode,
@@ -329,8 +361,6 @@ export function adaptCompetencyFields(
   };
   return [...rest, frameworkField, skillField];
 }
-
-const TARGET_ROLE_FIELD = 'targetRole';
 
 /**
  * Learning Path root: "Skill framework" (`competencyFramework`) and an optional "Target role"
@@ -346,29 +376,21 @@ export function adaptLpCompetencyFields(
 ): PreparedField[] {
   if (competency.frameworksLoaded && competency.frameworks.length === 0) return fields;
 
-  const stored = typeof meta[COMPETENCY_FIELD] === 'string' ? (meta[COMPETENCY_FIELD] as string) : '';
-  const selected = stored && competency.frameworks.some(f => f.value === stored) ? stored : '';
+  const { field: frameworkField, selected } = skillFrameworkField(competency, meta, ctx, PATH_SKILLS_SECTION);
   const rest = fields
-    .filter(f => f.code !== COMPETENCY_FIELD && f.code !== TARGET_ROLE_FIELD)
+    .filter(f => f.code !== COMPETENCY_FRAMEWORK_FIELD && f.code !== TARGET_ROLE_FIELD)
     .map(f => (selected && f.section === CURRICULUM_SECTION ? { ...f, required: false } : f));
-
-  const frameworkField: PreparedField = {
-    code: COMPETENCY_FIELD, label: 'Skill framework', inputType: 'select',
-    editable: computeEditable(COMPETENCY_FIELD, true, ctx), tab: 'details', section: 'Path skills',
-    placeholder: 'Select a skill framework',
-    options: competency.frameworks,
-    currentValue: selected || undefined,
-  };
   const roles = competency.roles ?? [];
   if (!selected || roles.length === 0) return [...rest, frameworkField];
 
+  const labels = ctx.competencyLabels ?? DEFAULT_COMPETENCY_LABELS;
   const storedRole = typeof meta[TARGET_ROLE_FIELD] === 'string' ? (meta[TARGET_ROLE_FIELD] as string) : '';
   const roleField: PreparedField = {
-    code: TARGET_ROLE_FIELD, label: 'Target role (optional)', inputType: 'select',
-    editable: computeEditable(TARGET_ROLE_FIELD, true, ctx), tab: 'details', section: 'Path skills',
-    placeholder: 'No target role',
+    code: TARGET_ROLE_FIELD, label: labels.targetRole, inputType: 'select',
+    editable: computeEditable(TARGET_ROLE_FIELD, true, ctx), tab: 'details', section: PATH_SKILLS_SECTION,
+    placeholder: labels.noTargetRole,
     // The role is optional, and a select can't otherwise be cleared.
-    options: [{ label: 'No target role', value: '' }, ...roles],
+    options: [{ label: labels.noTargetRole, value: '' }, ...roles],
     currentValue: storedRole && roles.some(r => r.value === storedRole) ? storedRole : undefined,
   };
   return [...rest, frameworkField, roleField];

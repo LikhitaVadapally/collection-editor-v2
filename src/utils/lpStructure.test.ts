@@ -618,6 +618,13 @@ describe('validateLearningPathStructure', () => {
       expect(issues[0]!.message).toContain('Kotlin');
     });
 
+    it('accepts a course tagged by skill name when the name is one of the role\'s skills', () => {
+      const terms = [{ identifier: 'java', code: 'java', name: 'Java' }];
+      const issues = validateLearningPathStructure(validPath(), 'skill', [], {}, terms, ['java'])
+        .filter(i => i.code.startsWith('role') || i.code === 'courseOutsideRole');
+      expect(issues).toEqual([]);
+    });
+
     it('applies neither rule without a role', () => {
       expect(roleIssues(validPath(), [])).toEqual([]);
     });

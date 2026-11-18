@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason, buildCourseLibraryFilters, buildOtherContentFilters, courseLibraryHint } from './useLibrary';
+import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason, buildCourseLibraryFilters, buildOtherContentFilters, courseLibraryHint, lpCompetencyScope, appendOtherPage, latestRequestGuard } from './useLibrary';
+import type { IContent } from '../types/content';
 import { DEFAULT_SEARCH_FIELDS } from '../api/content';
 
 describe('buildLpLibraryFilters', () => {
@@ -92,7 +93,7 @@ describe('computeLibraryEmptyReason', () => {
 });
 
 describe('buildLpLibraryFilters with a competency framework', () => {
-  const competency = { frameworkId: 'fw_health', roleSkills: ['hand-hygiene', 'ppe-use'] };
+  const competency = { frameworkId: 'fw_health', roleSkillValues: ['hand-hygiene', 'ppe-use'] };
 
   it('scopes by competencyFramework instead of the curriculum framework', () => {
     const f = buildLpLibraryFilters(null, false, ['hand-hygiene'], 'skill', 'USF', competency);
@@ -107,7 +108,7 @@ describe('buildLpLibraryFilters with a competency framework', () => {
   });
 
   it('leaves the assessment pick unfiltered by skill when there is no role', () => {
-    const f = buildLpLibraryFilters('pre', true, [], 'skill', undefined, { frameworkId: 'fw_health', roleSkills: [] });
+    const f = buildLpLibraryFilters('pre', true, [], 'skill', undefined, { frameworkId: 'fw_health', roleSkillValues: [] });
     expect(f).toEqual({ primaryCategory: ['Evaluation Course'], competencyFramework: ['fw_health'] });
   });
 });
@@ -176,5 +177,48 @@ describe('courseLibraryHint', () => {
   it('says nothing once the course has skills, or for anything but a Course', () => {
     expect(courseLibraryHint({ isCourse: true, ready: true })).toBeNull();
     expect(courseLibraryHint({ isCourse: false, ready: false })).toBeNull();
+  });
+});
+
+describe('lpCompetencyScope', () => {
+  const terms = [{ identifier: 'crop-survey', code: 'crop-survey', name: 'Crop Survey' }];
+
+  it('searches the role\'s skills by code and name, so name-tagged assessment courses match (positive)', () => {
+    expect(lpCompetencyScope('agro', ['crop-survey'], terms)).toEqual({ frameworkId: 'agro', roleSkillValues: ['crop-survey', 'Crop Survey'] });
+  });
+
+  it('is absent without a usable skill framework (negative)', () => {
+    expect(lpCompetencyScope(undefined, ['crop-survey'], terms)).toBeUndefined();
+  });
+});
+
+describe('appendOtherPage', () => {
+  const item = (identifier: string) => ({ identifier, name: identifier }) as IContent;
+
+  it('replaces the list on the first page (positive)', () => {
+    expect(appendOtherPage([item('a')], [item('b')], 0)).toEqual({ content: [item('b')], nextOffset: 1 });
+  });
+
+  it('pages on from what the server returned even when a repeat is dropped (positive)', () => {
+    const page = appendOtherPage([item('a'), item('b')], [item('b'), item('c')], 2);
+    expect(page.content.map((c) => c.identifier)).toEqual(['a', 'b', 'c']);
+    expect(page.nextOffset).toBe(4);
+  });
+});
+
+describe('latestRequestGuard', () => {
+  it('lets only the newest request apply its response (positive)', () => {
+    const guard = latestRequestGuard();
+    const first = guard.next();
+    const second = guard.next();
+    expect(guard.isLatest(first)).toBe(false);
+    expect(guard.isLatest(second)).toBe(true);
+  });
+
+  it('drops a pending request once invalidated (negative)', () => {
+    const guard = latestRequestGuard();
+    const token = guard.next();
+    guard.invalidate();
+    expect(guard.isLatest(token)).toBe(false);
   });
 });

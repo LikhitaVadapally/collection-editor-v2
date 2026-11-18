@@ -65,7 +65,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setSortAZ: (sortAZ) => set({ sortAZ }),
 
-
   applyFilter: () => {
     const { allContent, activeFilter, searchQuery } = get();
     let filtered = allContent;
