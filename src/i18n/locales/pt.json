@@ -175,7 +175,9 @@
     "requiredError": "{field} é obrigatório",
     "selectedCountSuffix": "selecionado(s)",
     "selectPlaceholder": "Selecionar…",
-    "noOptionsMessage": "Sem opções"
+    "noOptionsMessage": "Sem opções",
+    "searchPlaceholder": "Pesquisar…",
+    "noMatchesMessage": "Nenhum resultado"
   },
   "nestedSelectField": {
     "requiredError": "{field} é obrigatório",
@@ -187,7 +189,9 @@
   "selectField": {
     "requiredError": "{field} é obrigatório",
     "selectPlaceholder": "Selecionar…",
-    "noOptionsMessage": "Sem opções"
+    "noOptionsMessage": "Sem opções",
+    "searchPlaceholder": "Pesquisar…",
+    "noMatchesMessage": "Nenhum resultado"
   },
   "textField": {
     "requiredError": "{field} é obrigatório",

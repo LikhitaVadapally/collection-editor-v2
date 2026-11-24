@@ -3,6 +3,7 @@ import { useFormContext } from 'react-hook-form';
 import { ChevronDown, Check } from 'lucide-react';
 import { useLabels } from '../../../hooks/useLabels';
 import styles from './Field.module.scss';
+import { OptionSearchInput, useOptionSearch } from './OptionSearch';
 
 interface Option { label: string; value: string; }
 interface MultiSelectFieldProps { name: string; label: string; options: Option[]; required?: boolean; disabled?: boolean; }
@@ -11,13 +12,14 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({ name, label,
   const lbl = useLabels();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { query, setQuery, filtered, searchable } = useOptionSearch(options);
   const { register, watch, setValue, formState: { errors } } = useFormContext();
   const values = (watch(name) as string[]) ?? [];
   const error = errors[name];
   const displayText = values.length ? `${values.length} ${lbl.multiSelectField.selectedCountSuffix}` : lbl.multiSelectField.selectPlaceholder;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setQuery(''); return; }
     const fn = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', fn);
     return () => document.removeEventListener('mousedown', fn);
@@ -38,13 +40,15 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({ name, label,
       </button>
       {open && (
         <div className={styles.dropdown}>
-          {options.map(opt => (
+          {searchable && <OptionSearchInput value={query} onChange={setQuery} placeholder={lbl.multiSelectField.searchPlaceholder} />}
+          {filtered.map(opt => (
             <button key={opt.value} type="button" className={[styles.option, values.includes(opt.value) ? styles.optionSelected : ''].join(' ')} onClick={() => toggle(opt.value)}>
               <Check size={13} style={{ opacity: values.includes(opt.value) ? 1 : 0 }} />
               <span>{opt.label}</span>
             </button>
           ))}
           {!options.length && <span className={styles.noOpts}>{lbl.multiSelectField.noOptionsMessage}</span>}
+          {options.length > 0 && !filtered.length && <span className={styles.noOpts}>{lbl.multiSelectField.noMatchesMessage}</span>}
         </div>
       )}
       {error && <span className={styles.error}>{String(error.message)}</span>}

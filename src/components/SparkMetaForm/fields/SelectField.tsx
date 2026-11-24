@@ -3,6 +3,7 @@ import { useFormContext } from 'react-hook-form';
 import { ChevronDown, Check } from 'lucide-react';
 import { useLabels } from '../../../hooks/useLabels';
 import styles from './Field.module.scss';
+import { OptionSearchInput, useOptionSearch } from './OptionSearch';
 
 interface Option { label: string; value: string; }
 interface SelectFieldProps { name: string; label: string; options: Option[]; required?: boolean; disabled?: boolean; }
@@ -11,13 +12,14 @@ export const SelectField: React.FC<SelectFieldProps> = ({ name, label, options, 
   const lbl = useLabels();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { query, setQuery, filtered, searchable } = useOptionSearch(options);
   const { register, watch, setValue, formState: { errors } } = useFormContext();
   const value = watch(name) as string;
   const selectedLabel = options.find(o => o.value === value)?.label ?? lbl.selectField.selectPlaceholder;
   const error = errors[name];
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setQuery(''); return; }
     const fn = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', fn);
     return () => document.removeEventListener('mousedown', fn);
@@ -33,7 +35,8 @@ export const SelectField: React.FC<SelectFieldProps> = ({ name, label, options, 
       </button>
       {open && (
         <div className={styles.dropdown}>
-          {options.map(opt => (
+          {searchable && <OptionSearchInput value={query} onChange={setQuery} placeholder={lbl.selectField.searchPlaceholder} />}
+          {filtered.map(opt => (
             <button key={opt.value} type="button" className={[styles.option, value === opt.value ? styles.optionSelected : ''].join(' ')}
               onClick={() => { setValue(name, opt.value, { shouldDirty: true, shouldValidate: true }); setOpen(false); }}>
               <span>{opt.label}</span>
@@ -41,6 +44,7 @@ export const SelectField: React.FC<SelectFieldProps> = ({ name, label, options, 
             </button>
           ))}
           {!options.length && <span className={styles.noOpts}>{lbl.selectField.noOptionsMessage}</span>}
+          {options.length > 0 && !filtered.length && <span className={styles.noOpts}>{lbl.selectField.noMatchesMessage}</span>}
         </div>
       )}
       {error && <span className={styles.error}>{String(error.message)}</span>}

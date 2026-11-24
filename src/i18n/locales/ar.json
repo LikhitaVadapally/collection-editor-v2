@@ -175,7 +175,9 @@
     "requiredError": "{field} مطلوب",
     "selectedCountSuffix": "محدد",
     "selectPlaceholder": "اختر…",
-    "noOptionsMessage": "لا توجد خيارات"
+    "noOptionsMessage": "لا توجد خيارات",
+    "searchPlaceholder": "بحث…",
+    "noMatchesMessage": "لا توجد نتائج"
   },
   "nestedSelectField": {
     "requiredError": "{field} مطلوب",
@@ -187,7 +189,9 @@
   "selectField": {
     "requiredError": "{field} مطلوب",
     "selectPlaceholder": "اختر…",
-    "noOptionsMessage": "لا توجد خيارات"
+    "noOptionsMessage": "لا توجد خيارات",
+    "searchPlaceholder": "بحث…",
+    "noMatchesMessage": "لا توجد نتائج"
   },
   "textField": {
     "requiredError": "{field} مطلوب",

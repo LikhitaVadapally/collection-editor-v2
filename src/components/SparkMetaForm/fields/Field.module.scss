@@ -188,3 +188,13 @@
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .dialcodeSpinner { animation: spin 1s linear infinite; }
+
+// Stays at the top of the dropdown while the options scroll under it.
+.optionSearch {
+  position: sticky; top: -4px; z-index: 1;
+  display: flex; align-items: center; gap: 6px;
+  margin: -4px -4px 4px; padding: 8px 12px;
+  background: white; border-bottom: 1px solid var(--sbx-gray-200);
+  color: var(--sbx-gray-400);
+  input { flex: 1; min-width: 0; border: none; outline: none; font-size: 14px; color: var(--sbx-gray-900); background: transparent; }
+}
