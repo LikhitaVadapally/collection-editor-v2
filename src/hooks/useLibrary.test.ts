@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason, buildCourseLibraryFilters, buildOtherContentFilters, courseLibraryHint, lpCompetencyScope, appendOtherPage, latestRequestGuard } from './useLibrary';
+import { buildLpLibraryFilters, resolveBrowseSkills, buildSearchFields, computeLibraryEmptyReason, buildCourseLibraryFilters, isCourseSkillMatch, courseLibraryHint, lpCompetencyScope, appendOtherPage, latestRequestGuard } from './useLibrary';
 import type { IContent } from '../types/content';
 import { DEFAULT_SEARCH_FIELDS } from '../api/content';
 
@@ -130,42 +130,48 @@ describe('buildCourseLibraryFilters', () => {
     { identifier: 'cuisine-italian', code: 'cuisine-italian', name: 'Italian Cuisine' },
   ];
 
-  it("matches content in the course's skill framework carrying any of its skills, under the framework's own field", () => {
+  it("matches content in the course's skill framework whose skills all lie within the course's, under the framework's own field", () => {
     expect(buildCourseLibraryFilters('culinary_test', 'cuisine', ['cuisine-french'], terms)).toEqual({
       competencyFramework: ['culinary_test'],
-      cuisine: ['cuisine-french', 'French Cuisine'],
+      cuisine: { subsetOf: ['cuisine-french', 'French Cuisine'] },
     });
   });
 
-  it('uses a plain "any of" list, not subsetOf, so content that also covers other skills still matches', () => {
+  // Regression: a plain "any of" list offered content that also teaches skills outside the course.
+  it('uses subsetOf, not a plain "any of" list, so content teaching another skill too is left out', () => {
     const filters = buildCourseLibraryFilters('culinary_test', 'cuisine', ['cuisine-french', 'cuisine-italian'], terms);
-    expect(Array.isArray(filters.cuisine)).toBe(true);
-    expect(filters.cuisine).toEqual(['cuisine-french', 'French Cuisine', 'cuisine-italian', 'Italian Cuisine']);
+    expect(Array.isArray(filters.cuisine)).toBe(false);
+    expect(filters.cuisine).toEqual({ subsetOf: ['cuisine-french', 'French Cuisine', 'cuisine-italian', 'Italian Cuisine'] });
   });
 
   it('keeps a skill the framework no longer lists as-is', () => {
     expect(buildCourseLibraryFilters('fw', 'skill', ['retired'], terms)).toEqual({
       competencyFramework: ['fw'],
-      skill: ['retired'],
+      skill: { subsetOf: ['retired'] },
     });
   });
 });
 
-describe('buildOtherContentFilters', () => {
-  const browse = { status: ['Live'], primaryCategory: ['Explanation Content'] };
+describe('isCourseSkillMatch', () => {
+  const values = ['fe_sk_unit', 'Write Unit Tests'];
 
-  it("keeps the browse and leaves out content tagged with any of the course's skills", () => {
-    expect(buildOtherContentFilters(browse, 'cuisine', ['cuisine-french', 'French Cuisine'])).toEqual({
-      status: ['Live'],
-      primaryCategory: ['Explanation Content'],
-      cuisine: { '!=': ['cuisine-french', 'French Cuisine'] },
-    });
+  it('is a match when every skill tag is one of the course skills, in its framework', () => {
+    expect(isCourseSkillMatch({ competencyFramework: 'fe', skill: ['fe_sk_unit'] }, 'fe', 'skill', values)).toBe(true);
+    expect(isCourseSkillMatch({ competencyFramework: 'fe', skill: ['Write Unit Tests'] }, 'fe', 'skill', values)).toBe(true);
   });
 
-  it("doesn't touch the browse it was given", () => {
-    const filters = { ...browse };
-    buildOtherContentFilters(filters, 'skill', ['a']);
-    expect(filters).toEqual(browse);
+  // Regression: content that also teaches other skills must land in Other content, not vanish.
+  it('is not a match when the content also teaches a skill outside the course', () => {
+    expect(isCourseSkillMatch({ competencyFramework: 'fe', skill: ['fe_sk_unit', 'fe_sk_e2e'] }, 'fe', 'skill', values)).toBe(false);
+  });
+
+  it('is not a match in another framework or with no framework', () => {
+    expect(isCourseSkillMatch({ competencyFramework: 'other', skill: ['fe_sk_unit'] }, 'fe', 'skill', values)).toBe(false);
+    expect(isCourseSkillMatch({ name: 'untagged' }, 'fe', 'skill', values)).toBe(false);
+  });
+
+  it('reads a single string tag too', () => {
+    expect(isCourseSkillMatch({ competencyFramework: 'fe', skill: 'fe_sk_unit' }, 'fe', 'skill', values)).toBe(true);
   });
 });
 

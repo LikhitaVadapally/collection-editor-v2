@@ -304,10 +304,10 @@
     "noContentFound": "No content found",
     "tryDifferentSearch": "Try a different search or filter",
     "noSkillMatchTitle": "No content teaches this course's skills yet",
-    "noSkillMatchHint": "Content shows here once it is tagged with one of the course's skills. Everything else is under Other content.",
+    "noSkillMatchHint": "Content shows here once it is tagged only with this course's skills. Everything else is under Other content.",
     "matchingHeading": "Teaches this course's skills",
     "otherContentHeading": "Other content ({count})",
-    "otherContentHint": "These don't teach any of this course's skills. You can still add them.",
+    "otherContentHint": "These teach skills outside this course, or none. You can still add them.",
     "pickSkillsHint": "Pick this course's skills to see the content that teaches them first."
   },
   "libraryFilterPanel": {

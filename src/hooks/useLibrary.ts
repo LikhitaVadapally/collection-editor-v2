@@ -16,11 +16,11 @@ import type { LibraryFilters } from '../components/LibraryDock/LibraryFilterPane
 import type { ITerm } from '../types/framework';
 
 /**
- * Course profile, "Teaches this course's skills" section: content in the course's own skill framework that
- * carries at least one of the course's skills. Skill codes only mean something inside their own
- * framework, hence the framework filter. A plain array is Knowlg's "any of" (unlike the LP
- * Level's `subsetOf`): a PDF that also covers another skill still teaches this one. Names ride
- * along with codes so content tagged with legacy names matches too.
+ * Course profile, "Teaches this course's skills" section: content in the course's own skill
+ * framework whose skills ALL lie within the course's (Knowlg's `subsetOf`, as for a Learning Path
+ * Level). Content that also teaches a skill outside the course would carry that skill into it
+ * unasked, so it isn't offered. Skill codes only mean something inside their own framework, hence
+ * the framework filter. Names ride along with codes so content tagged with legacy names matches too.
  */
 export function buildCourseLibraryFilters(
   frameworkId: string,
@@ -30,23 +30,27 @@ export function buildCourseLibraryFilters(
 ): Record<string, unknown> {
   return {
     [COMPETENCY_FRAMEWORK_FIELD]: [frameworkId],
-    [skillField]: skillFilterValues(skills, terms),
+    [skillField]: { subsetOf: skillFilterValues(skills, terms) },
   };
 }
 
 /**
- * Course profile, "Other content" section: the same browse with content tagged with any of the
- * course's skills left out. Knowlg's `{ "!=": [...] }` means "none of" and keeps content with no
- * tag at all, so the exclusion happens in the search: the section pages like the main list and
- * its count is the real total. Skill codes are framework-specific, so the skill field alone is
- * enough to tell a match apart.
+ * Course profile: whether a search result is one the "Teaches this course's skills" section holds
+ * (the client-side twin of buildCourseLibraryFilters). "Other content" runs the same browse without
+ * the skill filter and drops these, so it shows everything else, content that also teaches other
+ * skills included. Knowlg has no "not subsetOf", hence the filtering here rather than in the search.
  */
-export function buildOtherContentFilters(
-  browseFilters: Record<string, unknown>,
+export function isCourseSkillMatch(
+  item: Record<string, unknown>,
+  frameworkId: string,
   skillField: string,
   matchValues: string[],
-): Record<string, unknown> {
-  return { ...browseFilters, [skillField]: { '!=': matchValues } };
+): boolean {
+  if (item[COMPETENCY_FRAMEWORK_FIELD] !== frameworkId) return false;
+  const raw = item[skillField];
+  const tags = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  const allowed = new Set(matchValues);
+  return tags.every((t) => allowed.has(String(t)));
 }
 
 /**
@@ -200,6 +204,10 @@ const NO_ITEMS: IContent[] = [];
 /** The browse "Other content" pages through: set by each new main-list browse, reused by its Load more. */
 interface IOtherBrowse {
   filters: Record<string, unknown>;
+  /** Results the main list already holds, left out here. */
+  isMatch: (item: IContent) => boolean;
+  /** How many results the main list holds, to take off the browse's total. */
+  matchedCount: number;
   query: string;
   sortBy: Record<string, string>;
   fields: string[] | undefined;
@@ -319,10 +327,11 @@ export function useLibrary() {
         fields: browse.fields,
       });
       if (!otherGuard.isLatest(token)) return;
-      const page = appendOtherPage(otherContentRef.current, content, offset);
+      const page = appendOtherPage(otherContentRef.current, content.filter((c) => !browse.isMatch(c)), offset);
       setOtherContent(page.content);
-      setOtherOffset(page.nextOffset);
-      setOtherTotal(count);
+      // The server's offset counts every result it returned, the dropped matches included.
+      setOtherOffset(offset + content.length);
+      setOtherTotal(Math.max(0, count - browse.matchedCount));
     } catch (e) {
       console.error('[useLibrary] other content load error:', e);
     } finally {
@@ -409,11 +418,15 @@ export function useLibrary() {
         // A new browse restarts "Other content" from its first page; the main list's Load more
         // leaves it alone (it pages itself through loadMoreOther).
         if (reset) {
-          if (!skillMatch || !course.skillField) {
+          if (!skillMatch || !course.skillField || !course.frameworkId) {
             clearOther();
           } else {
+            const { frameworkId, skillField } = course;
+            const matchValues = skillFilterValues(course.skills, course.terms);
             const browse: IOtherBrowse = {
-              filters: buildOtherContentFilters(unskilledFilters, course.skillField, skillMatch[course.skillField] as string[]),
+              filters: unskilledFilters,
+              isMatch: (item) => isCourseSkillMatch(item as unknown as Record<string, unknown>, frameworkId, skillField, matchValues),
+              matchedCount: count,
               query,
               sortBy,
               fields: buildSearchFields(editorProfile.competencyScoped, skillCategory?.code, course.skillField),

@@ -304,10 +304,10 @@
     "noContentFound": "Nenhum conteúdo encontrado",
     "tryDifferentSearch": "Tente uma busca ou filtro diferente",
     "noSkillMatchTitle": "Ainda não há conteúdo que ensine as habilidades deste curso",
-    "noSkillMatchHint": "O conteúdo aparece aqui assim que for marcado com uma das habilidades do curso. Todo o resto está em Outros conteúdos.",
+    "noSkillMatchHint": "O conteúdo aparece aqui quando é marcado apenas com as habilidades deste curso. Todo o resto está em Outros conteúdos.",
     "matchingHeading": "Ensina as habilidades deste curso",
     "otherContentHeading": "Outros conteúdos ({count})",
-    "otherContentHint": "Estes não ensinam nenhuma das habilidades deste curso. Você ainda pode adicioná-los.",
+    "otherContentHint": "Estes ensinam habilidades fora deste curso, ou nenhuma. Você ainda pode adicioná-los.",
     "pickSkillsHint": "Escolha as habilidades deste curso para ver primeiro o conteúdo que as ensina."
   },
   "libraryFilterPanel": {
